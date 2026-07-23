@@ -155,27 +155,30 @@ pub struct ChangeSet {
 impl Merge for ChangeSet {
     /// Merge another [`ChangeSet`] into itself.
     fn merge(&mut self, other: Self) {
-        if other.descriptor.is_some() {
+        if self.descriptor.is_none() && other.descriptor.is_some() {
+            self.descriptor = other.descriptor;
+        } else {
             debug_assert!(
-                self.descriptor.is_none() || self.descriptor == other.descriptor,
+                other.descriptor.is_none() || self.descriptor == other.descriptor,
                 "descriptor must never change"
             );
-            self.descriptor = other.descriptor;
         }
-        if other.change_descriptor.is_some() {
+        if self.change_descriptor.is_none() && other.change_descriptor.is_some() {
+            self.change_descriptor = other.change_descriptor;
+        } else {
             debug_assert!(
-                self.change_descriptor.is_none()
+                other.change_descriptor.is_none()
                     || self.change_descriptor == other.change_descriptor,
                 "change descriptor must never change"
             );
-            self.change_descriptor = other.change_descriptor;
         }
-        if other.network.is_some() {
+        if self.network.is_none() && other.network.is_some() {
+            self.network = other.network;
+        } else {
             debug_assert!(
-                self.network.is_none() || self.network == other.network,
+                other.network.is_none() || self.network == other.network,
                 "network must never change"
             );
-            self.network = other.network;
         }
 
         // merge locked outpoints
@@ -309,7 +312,8 @@ impl ChangeSet {
         use chain::Impl;
 
         let mut descriptor_statement = db_tx.prepare_cached(&format!(
-            "INSERT INTO {}(id, descriptor) VALUES(:id, :descriptor) ON CONFLICT(id) DO UPDATE SET descriptor=:descriptor",
+            "INSERT INTO {}(id, descriptor) VALUES(:id, :descriptor) ON CONFLICT(id) DO UPDATE SET descriptor=COALESCE({}.descriptor, :descriptor)",
+            Self::WALLET_TABLE_NAME,
             Self::WALLET_TABLE_NAME,
         ))?;
         if let Some(descriptor) = &self.descriptor {
@@ -320,7 +324,8 @@ impl ChangeSet {
         }
 
         let mut change_descriptor_statement = db_tx.prepare_cached(&format!(
-            "INSERT INTO {}(id, change_descriptor) VALUES(:id, :change_descriptor) ON CONFLICT(id) DO UPDATE SET change_descriptor=:change_descriptor",
+            "INSERT INTO {}(id, change_descriptor) VALUES(:id, :change_descriptor) ON CONFLICT(id) DO UPDATE SET change_descriptor=COALESCE({}.change_descriptor, :change_descriptor)",
+            Self::WALLET_TABLE_NAME,
             Self::WALLET_TABLE_NAME,
         ))?;
         if let Some(change_descriptor) = &self.change_descriptor {
@@ -331,7 +336,8 @@ impl ChangeSet {
         }
 
         let mut network_statement = db_tx.prepare_cached(&format!(
-            "INSERT INTO {}(id, network) VALUES(:id, :network) ON CONFLICT(id) DO UPDATE SET network=:network",
+            "INSERT INTO {}(id, network) VALUES(:id, :network) ON CONFLICT(id) DO UPDATE SET network=COALESCE({}.network, :network)",
+            Self::WALLET_TABLE_NAME,
             Self::WALLET_TABLE_NAME,
         ))?;
         if let Some(network) = self.network {

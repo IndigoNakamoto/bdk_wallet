@@ -24,7 +24,8 @@ use bitcoin::{
 use miniscript::{Descriptor, DescriptorPublicKey};
 
 use bdk_wallet::persist_test_utils::{
-    persist_keychains, persist_network, persist_single_keychain, persist_wallet_changeset,
+    merge_first_write_wins, persist_first_write_wins, persist_keychains, persist_network,
+    persist_single_keychain, persist_wallet_changeset,
 };
 
 mod common;
@@ -488,6 +489,22 @@ fn network_is_persisted() {
         Ok(bdk_file_store::Store::create(DB_MAGIC, path)?)
     });
     persist_network::<bdk_chain::rusqlite::Connection, _>("store.sqlite", |path| {
+        Ok(bdk_chain::rusqlite::Connection::open(path)?)
+    });
+}
+
+#[test]
+fn first_write_wins_on_merge() {
+    merge_first_write_wins();
+}
+
+#[test]
+fn first_write_wins_on_persist() {
+    // The persist_first_write_wins test is only meaningful for backends that enforce the
+    // invariant at the storage layer (e.g. SQLite with COALESCE). For append-log backends
+    // like bdk_file_store, the Rust Merge implementation enforces this, but merging
+    // conflicting changesets would trigger a debug_assert in debug builds.
+    persist_first_write_wins::<bdk_chain::rusqlite::Connection, _>("store.sqlite", |path| {
         Ok(bdk_chain::rusqlite::Connection::open(path)?)
     });
 }

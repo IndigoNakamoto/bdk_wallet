@@ -393,6 +393,172 @@ where
     assert_eq!(changeset_read.change_descriptor.unwrap(), change_descriptor);
 }
 
+/// tests that the "first write wins" invariant is enforced for [`ChangeSet`] write-once fields
+///
+/// [`ChangeSet`]: <https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.ChangeSet.html>
+///
+/// We persist an initial [`ChangeSet`] with `descriptor`, `change_descriptor`, and `network`
+/// set, then persist a second [`ChangeSet`] attempting to overwrite those values with different
+/// ones. After loading, the persisted values must match the originals (first write wins).
+///
+/// Note: this test is only meaningful for backends whose persistence layer enforces the invariant
+/// independently of the Rust [`Merge`] implementation (e.g. SQLite with `COALESCE`). For
+/// append-log backends like `bdk_file_store`, the [`Merge`] implementation already prevents
+/// overwriting in release builds and panics in debug builds.
+pub fn persist_first_write_wins<Store, CreateStore>(filename: &str, create_store: CreateStore)
+where
+    CreateStore: Fn(&Path) -> anyhow::Result<Store>,
+    Store: WalletPersister,
+    Store::Error: Debug,
+{
+    // create store
+    let temp_dir = tempfile::tempdir().expect("must create tempdir");
+    let file_path = temp_dir.path().join(filename);
+    let mut store = create_store(&file_path).expect("store should get created");
+
+    // initialize store
+    let changeset = WalletPersister::initialize(&mut store)
+        .expect("should initialize and load empty changeset");
+    assert_eq!(changeset, ChangeSet::default());
+
+    // persist initial values
+    let descriptor: Descriptor<DescriptorPublicKey> = DESCRIPTORS[0].parse().unwrap();
+    let change_descriptor: Descriptor<DescriptorPublicKey> = DESCRIPTORS[1].parse().unwrap();
+
+    let first_changeset = ChangeSet {
+        descriptor: Some(descriptor.clone()),
+        change_descriptor: Some(change_descriptor.clone()),
+        network: Some(Network::Bitcoin),
+        ..ChangeSet::default()
+    };
+    WalletPersister::persist(&mut store, &first_changeset).expect("should persist first changeset");
+
+    // attempt to overwrite with different values
+    let descriptor_new: Descriptor<DescriptorPublicKey> = DESCRIPTORS[2].parse().unwrap();
+    let change_descriptor_new: Descriptor<DescriptorPublicKey> = DESCRIPTORS[3].parse().unwrap();
+
+    let second_changeset = ChangeSet {
+        descriptor: Some(descriptor_new.clone()),
+        change_descriptor: Some(change_descriptor_new.clone()),
+        network: Some(Network::Testnet),
+        ..ChangeSet::default()
+    };
+    WalletPersister::persist(&mut store, &second_changeset)
+        .expect("should persist second changeset");
+
+    // load and verify the first values were preserved (first write wins)
+    let changeset_read =
+        WalletPersister::initialize(&mut store).expect("should load persisted changeset");
+
+    assert_eq!(
+        changeset_read.descriptor,
+        Some(descriptor),
+        "descriptor must not be overwritten"
+    );
+    assert_eq!(
+        changeset_read.change_descriptor,
+        Some(change_descriptor),
+        "change_descriptor must not be overwritten"
+    );
+    assert_eq!(
+        changeset_read.network,
+        Some(Network::Bitcoin),
+        "network must not be overwritten"
+    );
+}
+
+/// tests that merging [`ChangeSet`]s with write-once fields follows "first write wins" semantics
+///
+/// [`ChangeSet`]: <https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.ChangeSet.html>
+///
+/// Verifies three scenarios:
+/// 1. `None` + `Some(x)` → `Some(x)` (initial population accepted)
+/// 2. `Some(x)` + `None` → `Some(x)` (field is not cleared)
+/// 3. `Some(x)` + `Some(x)` → `Some(x)` (same value, no change)
+pub fn merge_first_write_wins() {
+    let descriptor: Descriptor<DescriptorPublicKey> = DESCRIPTORS[0].parse().unwrap();
+    let change_descriptor: Descriptor<DescriptorPublicKey> = DESCRIPTORS[1].parse().unwrap();
+
+    // Scenario 1: None ← Some(x) — first write populates the field
+    let mut empty = ChangeSet::default();
+    let with_values = ChangeSet {
+        descriptor: Some(descriptor.clone()),
+        change_descriptor: Some(change_descriptor.clone()),
+        network: Some(Network::Bitcoin),
+        ..ChangeSet::default()
+    };
+    empty.merge(with_values);
+    assert_eq!(
+        empty.descriptor,
+        Some(descriptor.clone()),
+        "descriptor should be populated from first merge"
+    );
+    assert_eq!(
+        empty.change_descriptor,
+        Some(change_descriptor.clone()),
+        "change_descriptor should be populated from first merge"
+    );
+    assert_eq!(
+        empty.network,
+        Some(Network::Bitcoin),
+        "network should be populated from first merge"
+    );
+
+    // Scenario 2: Some(x) ← None — existing field is not cleared
+    let mut changeset = ChangeSet {
+        descriptor: Some(descriptor.clone()),
+        change_descriptor: Some(change_descriptor.clone()),
+        network: Some(Network::Bitcoin),
+        ..ChangeSet::default()
+    };
+    changeset.merge(ChangeSet::default());
+    assert_eq!(
+        changeset.descriptor,
+        Some(descriptor.clone()),
+        "descriptor must not be cleared when merging empty changeset"
+    );
+    assert_eq!(
+        changeset.change_descriptor,
+        Some(change_descriptor.clone()),
+        "change_descriptor must not be cleared when merging empty changeset"
+    );
+    assert_eq!(
+        changeset.network,
+        Some(Network::Bitcoin),
+        "network must not be cleared when merging empty changeset"
+    );
+
+    // Scenario 3: Some(x) ← Some(x) — same value, no change
+    let mut changeset = ChangeSet {
+        descriptor: Some(descriptor.clone()),
+        change_descriptor: Some(change_descriptor.clone()),
+        network: Some(Network::Bitcoin),
+        ..ChangeSet::default()
+    };
+    let same_values = ChangeSet {
+        descriptor: Some(descriptor.clone()),
+        change_descriptor: Some(change_descriptor.clone()),
+        network: Some(Network::Bitcoin),
+        ..ChangeSet::default()
+    };
+    changeset.merge(same_values);
+    assert_eq!(
+        changeset.descriptor,
+        Some(descriptor),
+        "descriptor must remain unchanged when merging same value"
+    );
+    assert_eq!(
+        changeset.change_descriptor,
+        Some(change_descriptor),
+        "change_descriptor must remain unchanged when merging same value"
+    );
+    assert_eq!(
+        changeset.network,
+        Some(Network::Bitcoin),
+        "network must remain unchanged when merging same value"
+    );
+}
+
 /// tests if descriptor(in a single keychain wallet) is being persisted correctly
 ///
 /// [`ChangeSet`]: <https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.ChangeSet.html>
