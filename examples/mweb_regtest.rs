@@ -1,17 +1,26 @@
-//! Regtest walkthrough: peg-in → [`MwebStore`] → peg-out.
+//! Regtest walkthrough: peg-in → tip seam → LIP-0006 verified sync → peg-out.
 //!
 //! ```bash
 //! export LITECOIND_EXE=/path/to/litecoind
 //! cargo run -p bdk_wallet --example mweb_regtest --features "mweb,file_store,test-utils"
 //! ```
 //!
+//! Tip seam (Electrum/Esplora/RPC stay outside `bdk_mweb`):
+//! ```text
+//! apply_block / apply_update → tip = wallet.latest_checkpoint()
+//!   → (on shorter tip) MwebStore::disconnect_from(new_tip + 1)
+//!   → sync_at_tip(TcpMwebPeer, tip_hash, tip_height, HeaderAndPmmr)
+//! ```
+//!
 //! Production apps should encrypt the MWEB store (`bdk_mweb::seal` /
 //! `seal_changeset`) and keep it beside the wallet DB — never in `Wallet::ChangeSet`.
 
 use bdk_mweb::keys::{MasterKeyScheme, MasterKeys};
+use bdk_mweb::lip0006::VerifyMode;
+use bdk_mweb::lip0006_tcp::TcpMwebPeer;
 use bdk_mweb::tx_builder::CHANGE_ADDRESS_INDEX;
-use bdk_mweb::{scan_litecoin_tx_at, AddressBook, DEFAULT_GAP_LIMIT};
-use bdk_testenv::{try_node_from_env, MWEB_PEGIN_MATURITY};
+use bdk_mweb::{AddressBook, MWEB_PEGIN_MATURITY, DEFAULT_GAP_LIMIT};
+use bdk_testenv::try_node_from_env;
 use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
 use bdk_wallet::bitcoin::{Amount, Network};
@@ -82,14 +91,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         wallet.apply_block(&block, h)?;
     }
 
-    let found = scan_litecoin_tx_at(&keys, &book, &tx, store.db_mut(), &secp, Some(tip))?;
+    // Tip seam identical to Electrum/Esplora: checkpoint hash + height.
+    let tip_height = wallet.latest_checkpoint().height();
+    let tip_hash = env.rpc.get_block_hash(tip_height)?;
+
+    // Reorg seam: clear heights at/after tip (noop on empty store), then verified sync.
+    store.disconnect_from(tip_height);
+
+    let mut peer = TcpMwebPeer::connect(env.p2p_addr(), Network::Regtest)?;
+    let result = store.sync_at_tip(
+        &mut peer,
+        &keys,
+        &book,
+        tip_hash,
+        tip_height,
+        VerifyMode::HeaderAndPmmr,
+        &secp,
+    )?;
+    // Peg-in outputs need maturity metadata (LIP UTXO batches omit kernels).
+    for coin in &result.found {
+        if let Some(mut c) = store.db().get(&coin.output_id).cloned() {
+            c.is_pegin = true;
+            store.db_mut().insert(c);
+        }
+    }
     store.persist_file_store(&mut file_store)?;
+
     let combined = wallet.balance_combined_store(&store);
+    let spendable = store
+        .db()
+        .unspent_spendable(tip_height, MWEB_PEGIN_MATURITY);
     println!(
-        "scanned {} coin(s); mweb_confirmed={} mweb_pending={}",
-        found.len(),
+        "LIP sync downloaded={} found={}; mweb_confirmed={} spendable_coins={}",
+        result.downloaded,
+        result.found.len(),
         combined.mweb_confirmed,
-        combined.mweb_untrusted_pending
+        spendable.len()
     );
 
     let pegout_addr = env.rpc.get_new_address()?;

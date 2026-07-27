@@ -11,7 +11,7 @@ use bdk_mweb::keys::MasterKeys;
 use bdk_mweb::tx_builder::{
     build_pegin, FinishedMwebPegin, FinishedMwebTx, MwebTxBuilder, CHANGE_ADDRESS_INDEX,
 };
-use bdk_mweb::{MwebBalance, MwebCoin, MwebCoinDatabase};
+use bdk_mweb::{MwebBalance, MwebCoin, MwebCoinDatabase, MWEB_PEGIN_MATURITY};
 use bitcoin::key::Secp256k1;
 use bitcoin::psbt::Psbt;
 use bitcoin::secp256k1::All;
@@ -21,6 +21,10 @@ use crate::wallet::error::CreateTxError;
 use crate::wallet::{Balance, Wallet};
 
 /// Transparent [`Balance`] plus bucketed MWEB value from a caller-owned database.
+///
+/// **Spendable** MWEB is a stricter subset of `mweb_confirmed`: confirmed **and**
+/// peg-in mature ([`MWEB_PEGIN_MATURITY`] blocks). Use
+/// [`MwebCoinDatabase::unspent_spendable`] for selection.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize)]
 pub struct CombinedBalance {
     /// Existing transparent wallet balance.
@@ -139,6 +143,34 @@ impl MwebStore {
         bdk_mweb::ChangeSet::init_sqlite_tables(db_tx)?;
         let cs = bdk_mweb::ChangeSet::from_sqlite(db_tx)?;
         Ok(Self::from_changeset(cs))
+    }
+
+    /// Clear inclusion heights for coins at or above `height` (reorg disconnect).
+    pub fn disconnect_from(&mut self, height: u32) {
+        self.db.disconnect_from(height);
+    }
+
+    /// Tip-driven LIP-0006 sync into this store.
+    pub fn sync_at_tip<S: bdk_mweb::lip0006::MwebUtxoSource>(
+        &mut self,
+        source: &mut S,
+        keys: &MasterKeys,
+        book: &bdk_mweb::AddressBook,
+        tip_hash: bitcoin::BlockHash,
+        tip_height: u32,
+        verify: bdk_mweb::lip0006::VerifyMode,
+        secp: &Secp256k1<All>,
+    ) -> Result<bdk_mweb::lip0006::SyncResult, bdk_mweb::Error> {
+        bdk_mweb::lip0006::sync_mweb_at_tip(
+            source,
+            keys,
+            book,
+            &mut self.db,
+            secp,
+            tip_hash,
+            tip_height,
+            verify,
+        )
     }
 }
 
@@ -345,7 +377,8 @@ impl Wallet {
         let pool = if include_unconfirmed {
             db.unspent_vec()
         } else {
-            db.unspent_confirmed(tip)
+            // Spendable = confirmed + peg-in maturity.
+            db.unspent_spendable(tip, MWEB_PEGIN_MATURITY)
         };
         let needed = amount.to_sat().saturating_add(fee.to_sat());
         let selected = select_mweb_coins(&pool, needed)?;
@@ -399,7 +432,7 @@ impl Wallet {
         let pool = if include_unconfirmed {
             db.unspent_vec()
         } else {
-            db.unspent_confirmed(tip)
+            db.unspent_spendable(tip, MWEB_PEGIN_MATURITY)
         };
         let needed = amount.to_sat().saturating_add(fee.to_sat());
         let selected = select_mweb_coins(&pool, needed)?;
@@ -449,6 +482,7 @@ mod tests {
             shared_secret: [0; 32],
             spend_key: Some([1; 32]),
             block_height: Some(1),
+            is_pegin: false,
         }
     }
 
