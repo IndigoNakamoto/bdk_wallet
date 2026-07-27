@@ -186,7 +186,7 @@ fn test_psbt_multiple_internalkey_signers() {
         // A signerordering lower than 100, bdk will use this signer first
         SignerOrdering(0),
         Arc::new(SignerWrapper::new(
-            PrivateKey::from_wif("5J5PZqvCe1uThJ3FZeUUFLCh2FuK9pZhtEK4MzhNmugqTmxCdwE").unwrap(),
+            PrivateKey::from_wif("6uP82yTjYSNLAfw75UGS2iyryjTnMd1jeuiE5BiQVN1T9b6Ch34").unwrap(),
             SignerContext::Tap {
                 is_internal_key: true,
             },

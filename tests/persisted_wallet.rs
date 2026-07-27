@@ -104,7 +104,7 @@ fn wallet_is_persisted() -> anyhow::Result<()> {
         let wallet_spk_index = {
             let mut db = create_db(&file_path)?;
             let mut wallet = Wallet::create(external_desc, internal_desc)
-                .network(Network::Testnet)
+                .network(Network::Testnet4)
                 .use_spk_cache(true)
                 .create_wallet(&mut db)?;
 
@@ -130,11 +130,11 @@ fn wallet_is_persisted() -> anyhow::Result<()> {
             let wallet = Wallet::load()
                 .descriptor(KeychainKind::External, Some(external_desc))
                 .descriptor(KeychainKind::Internal, Some(internal_desc))
-                .check_network(Network::Testnet)
+                .check_network(Network::Testnet4)
                 .load_wallet(&mut db)?
                 .expect("wallet must exist");
 
-            assert_eq!(wallet.network(), Network::Testnet);
+            assert_eq!(wallet.network(), Network::Testnet4);
             assert_eq!(
                 wallet.spk_index().keychains().collect::<Vec<_>>(),
                 wallet_spk_index.keychains().collect::<Vec<_>>()
@@ -157,7 +157,7 @@ fn wallet_is_persisted() -> anyhow::Result<()> {
         {
             let mut db = open_db(&file_path).context("failed to recover db")?;
             let mut wallet = Wallet::load()
-                .check_network(Network::Testnet)
+                .check_network(Network::Testnet4)
                 .use_spk_cache(true)
                 .load_wallet(&mut db)?
                 .expect("wallet must exist");
@@ -192,7 +192,7 @@ fn wallet_is_persisted() -> anyhow::Result<()> {
         {
             let mut db = open_db(&file_path).context("failed to recover db")?;
             let mut wallet = Wallet::load()
-                .check_network(Network::Testnet)
+                .check_network(Network::Testnet4)
                 // .use_spk_cache(false)
                 .load_wallet(&mut db)?
                 .expect("wallet must exist");
@@ -244,7 +244,7 @@ fn wallet_load_checks() -> anyhow::Result<()> {
     {
         let temp_dir = tempfile::tempdir().expect("must create tempdir");
         let file_path = temp_dir.path().join(filename);
-        let network = Network::Testnet;
+        let network = Network::Testnet4;
         let (external_desc, internal_desc) = get_test_tr_single_sig_xprv_and_change_desc();
 
         // create new wallet
@@ -258,7 +258,7 @@ fn wallet_load_checks() -> anyhow::Result<()> {
                 .load_wallet(&mut open_db(&file_path)?),
             Err(LoadWithPersistError::InvalidChangeSet(LoadError::Mismatch(
                 LoadMismatch::Network {
-                    loaded: Network::Testnet,
+                    loaded: Network::Testnet4,
                     expected: Network::Regtest,
                 }
             ))),
@@ -330,10 +330,12 @@ fn wallet_should_persist_anchors_and_recover() {
 
     let desc = get_test_tr_single_sig_xprv();
     let mut wallet = Wallet::create_single(desc)
-        .network(Network::Testnet)
+        .network(Network::Testnet4)
         .create_wallet(&mut db)
         .unwrap();
     let small_output_tx = Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         input: vec![],
         output: vec![TxOut {
             script_pubkey: wallet
@@ -386,7 +388,7 @@ fn single_descriptor_wallet_persist_and_recover() {
 
     let desc = get_test_tr_single_sig_xprv();
     let mut wallet = Wallet::create_single(desc)
-        .network(Network::Testnet)
+        .network(Network::Testnet4)
         .create_wallet(&mut db)
         .unwrap();
     let _ = wallet.reveal_addresses_to(KeychainKind::External, 2);

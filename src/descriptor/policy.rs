@@ -1623,10 +1623,10 @@ mod test {
         let addr = wallet_desc
             .at_derivation_index(0)
             .unwrap()
-            .address(Network::Testnet)
+            .address(Network::Testnet4)
             .unwrap();
         assert_eq!(
-            "tb1qg3cwv3xt50gdg875qvjjpfgaps86gtk4rz0ejvp6ttc5ldnlxuvqlcn0xk",
+            "tltc1qg3cwv3xt50gdg875qvjjpfgaps86gtk4rz0ejvp6ttc5ldnlxuvqqm0wef",
             addr.to_string()
         );
 
@@ -1691,10 +1691,10 @@ mod test {
         let addr = wallet_desc
             .at_derivation_index(0)
             .unwrap()
-            .address(Network::Testnet)
+            .address(Network::Testnet4)
             .unwrap();
         assert_eq!(
-            "tb1qsydsey4hexagwkvercqsmes6yet0ndkyt6uzcphtqnygjd8hmzmsfxrv58",
+            "tltc1qsydsey4hexagwkvercqsmes6yet0ndkyt6uzcphtqnygjd8hmzmsk9ldtc",
             addr.to_string()
         );
 

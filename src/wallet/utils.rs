@@ -178,7 +178,7 @@ mod test {
 
     #[test]
     fn test_is_dust() {
-        let script_p2pkh = Address::from_str("1GNgwA8JfG7Kc8akJ8opdNWJUihqUztfPe")
+        let script_p2pkh = Address::from_str("LabeCNS8jvMNrwGuUGo7uPa4gw57fyUMiU")
             .unwrap()
             .require_network(Network::Bitcoin)
             .unwrap()
@@ -187,7 +187,7 @@ mod test {
         assert!(545.is_dust(&script_p2pkh));
         assert!(!546.is_dust(&script_p2pkh));
 
-        let script_p2wpkh = Address::from_str("bc1qxlh2mnc0yqwas76gqq665qkggee5m98t8yskd8")
+        let script_p2wpkh = Address::from_str("ltc1qxlh2mnc0yqwas76gqq665qkggee5m98trc2j4h")
             .unwrap()
             .require_network(Network::Bitcoin)
             .unwrap()

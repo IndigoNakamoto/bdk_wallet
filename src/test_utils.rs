@@ -63,7 +63,7 @@ pub fn new_wallet_and_funding_update(
         .expect("descriptors must be valid");
 
     let receive_address = wallet.peek_address(KeychainKind::External, 0).address;
-    let sendto_address = Address::from_str("bcrt1q3qtze4ys45tgdvguj66zrk4fu6hq3a3v9pfly5")
+    let sendto_address = Address::from_str("rltc1q3qtze4ys45tgdvguj66zrk4fu6hq3a3vmvnkn2")
         .expect("address")
         .require_network(Network::Regtest)
         .unwrap();
@@ -71,6 +71,8 @@ pub fn new_wallet_and_funding_update(
     let mut update = Update::default();
 
     let tx0 = Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         output: vec![TxOut {
             value: Amount::from_sat(76_000),
             script_pubkey: receive_address.script_pubkey(),
@@ -79,6 +81,8 @@ pub fn new_wallet_and_funding_update(
     };
 
     let tx1 = Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         input: vec![TxIn {
             previous_output: OutPoint {
                 txid: tx0.compute_txid(),
@@ -219,6 +223,8 @@ pub fn get_test_tr_dup_keys() -> &'static str {
 /// A new empty transaction with the given locktime
 pub fn new_tx(locktime: u32) -> Transaction {
     Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         version: transaction::Version::ONE,
         lock_time: absolute::LockTime::from_consensus(locktime),
         input: vec![],
@@ -286,6 +292,8 @@ pub fn receive_output_to_address(
     receive_to: impl Into<ReceiveTo>,
 ) -> OutPoint {
     let tx = Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         version: transaction::Version::ONE,
         lock_time: absolute::LockTime::ZERO,
         input: vec![],

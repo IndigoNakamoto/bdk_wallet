@@ -85,7 +85,7 @@ use bdk_wallet::{KeychainKind, Wallet};
 let db_path = "my_wallet.sqlite";
 let mut conn = rusqlite::Connection::open(db_path)?;
 
-let network = bitcoin::Network::Testnet;
+let network = bitcoin::Network::Testnet4;
 let descriptor = "wpkh(tprv8ZgxMBicQKsPdcAqYBpzAFwU5yxBUo88ggoBqu1qPcHUfSbKK1sKMLmC7EAk438btHQrSdu3jGGQa6PA71nvH5nkDexhLteJqkM4dQmWF9g/84'/1'/0'/0/*)";
 let change_descriptor = "wpkh(tprv8ZgxMBicQKsPdcAqYBpzAFwU5yxBUo88ggoBqu1qPcHUfSbKK1sKMLmC7EAk438btHQrSdu3jGGQa6PA71nvH5nkDexhLteJqkM4dQmWF9g/84'/1'/0'/1/*)";
 

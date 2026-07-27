@@ -36,7 +36,7 @@
 //!     import.descriptor(),
 //!     import.change_descriptor().expect("change descriptor"),
 //! )
-//! .network(Network::Testnet)
+//! .network(Network::Testnet4)
 //! .create_wallet_no_persist()?;
 //! # Ok::<_, Box<dyn std::error::Error>>(())
 //! ```
@@ -50,7 +50,7 @@
 //!     "wpkh([c258d2e4/84h/1h/0h]tpubDD3ynpHgJQW8VvWRzQ5WFDCrs4jqVFGHB3vLC3r49XHJSqP8bHKdK4AriuUKLccK68zfzowx7YhmDN8SiSkgCDENUFx9qVw65YyqM78vyVe/0/*)",
 //!     "wpkh([c258d2e4/84h/1h/0h]tpubDD3ynpHgJQW8VvWRzQ5WFDCrs4jqVFGHB3vLC3r49XHJSqP8bHKdK4AriuUKLccK68zfzowx7YhmDN8SiSkgCDENUFx9qVw65YyqM78vyVe/1/*)",
 //! )
-//! .network(Network::Testnet)
+//! .network(Network::Testnet4)
 //! .create_wallet_no_persist()?;
 //! let export = FullyNodedExport::export_wallet(&wallet, "exported wallet", true).unwrap();
 //!
@@ -67,7 +67,7 @@
 //!     "wsh(sortedmulti(2,[73756c7f/48h/0h/0h/2h]tpubDCKxNyM3bLgbEX13Mcd8mYxbVg9ajDkWXMh29hMWBurKfVmBfWAM96QVP3zaUcN51HvkZ3ar4VwP82kC8JZhhux8vFQoJintSpVBwpFvyU3/0/*,[f9f62194/48h/0h/0h/2h]tpubDDp3ZSH1yCwusRppH7zgSxq2t1VEUyXSeEp8E5aFS8m43MknUjiF1bSLo3CGWAxbDyhF1XowA5ukPzyJZjznYk3kYi6oe7QxtX2euvKWsk4/0/*))",
 //!     "wsh(sortedmulti(2,[73756c7f/48h/0h/0h/2h]tpubDCKxNyM3bLgbEX13Mcd8mYxbVg9ajDkWXMh29hMWBurKfVmBfWAM96QVP3zaUcN51HvkZ3ar4VwP82kC8JZhhux8vFQoJintSpVBwpFvyU3/1/*,[f9f62194/48h/0h/0h/2h]tpubDDp3ZSH1yCwusRppH7zgSxq2t1VEUyXSeEp8E5aFS8m43MknUjiF1bSLo3CGWAxbDyhF1XowA5ukPzyJZjznYk3kYi6oe7QxtX2euvKWsk4/1/*))",
 //! )
-//! .network(Network::Testnet)
+//! .network(Network::Testnet4)
 //! .create_wallet_no_persist()?;
 //! let export = CaravanExport::export_wallet(&wallet, "My Multisig Wallet").unwrap();
 //!
@@ -791,7 +791,7 @@ mod test {
                                        [c98b1535/48'/0'/0'/2']tpubDCDi5W4sP6zSnzJeowy8rQDVhBdRARaPhK1axABi8V1661wEPeanpEXj4ZLAUEoikVtoWcyK26TKKJSecSfeKxwHCcRrge9k1ybuiL71z4a/1/*\
                                  ))";
 
-        let wallet = get_test_wallet(descriptor, change_descriptor, Network::Testnet);
+        let wallet = get_test_wallet(descriptor, change_descriptor, Network::Testnet4);
         let export = FullyNodedExport::export_wallet(&wallet, "Test Label", true).unwrap();
 
         assert_eq!(export.descriptor(), descriptor);
@@ -804,7 +804,7 @@ mod test {
     fn test_export_tr() {
         let descriptor = "tr([73c5da0a/86'/0'/0']tprv8fMn4hSKPRC1oaCPqxDb1JWtgkpeiQvZhsr8W2xuy3GEMkzoArcAWTfJxYb6Wj8XNNDWEjfYKK4wGQXh3ZUXhDF2NcnsALpWTeSwarJt7Vc/0/*)";
         let change_descriptor = "tr([73c5da0a/86'/0'/0']tprv8fMn4hSKPRC1oaCPqxDb1JWtgkpeiQvZhsr8W2xuy3GEMkzoArcAWTfJxYb6Wj8XNNDWEjfYKK4wGQXh3ZUXhDF2NcnsALpWTeSwarJt7Vc/1/*)";
-        let wallet = get_test_wallet(descriptor, change_descriptor, Network::Testnet);
+        let wallet = get_test_wallet(descriptor, change_descriptor, Network::Testnet4);
         let export = FullyNodedExport::export_wallet(&wallet, "Test Label", true).unwrap();
         assert_eq!(export.descriptor(), descriptor);
         assert_eq!(export.change_descriptor(), Some(change_descriptor.into()));
@@ -924,7 +924,7 @@ mod test {
         );
 
         assert_eq!(
-            serde_json::to_string(&CaravanNetwork::from(bitcoin::Network::Testnet)).unwrap(),
+            serde_json::to_string(&CaravanNetwork::from(bitcoin::Network::Testnet4)).unwrap(),
             "\"testnet\""
         );
 
@@ -1024,7 +1024,7 @@ mod test {
 
         // Verify the descriptors can create a functional BDK Wallet
         let wallet_result = Wallet::create(external_desc, internal_desc)
-            .network(bitcoin::Network::Testnet)
+            .network(bitcoin::Network::Testnet4)
             .create_wallet_no_persist();
 
         assert!(
@@ -1036,7 +1036,7 @@ mod test {
         let mut wallet = wallet_result.unwrap();
 
         // Verify basic wallet functionality
-        assert_eq!(wallet.network(), bitcoin::Network::Testnet);
+        assert_eq!(wallet.network(), bitcoin::Network::Testnet4);
 
         // Test address generation to verify the wallet is functional
         let address = wallet.reveal_next_address(crate::types::KeychainKind::External);
@@ -1045,8 +1045,8 @@ mod test {
         // Verify it's a proper script hash address (P2WSH)
         let addr_str = address.address.to_string();
         assert!(
-            addr_str.starts_with("tb1"),
-            "Expected testnet bech32 address, got: {}",
+            addr_str.starts_with("tltc1"),
+            "Expected Litecoin testnet bech32 address, got: {}",
             addr_str
         );
     }

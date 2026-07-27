@@ -43,6 +43,8 @@ const DESCRIPTORS: [&str; 4] = [
 
 fn create_one_inp_one_out_tx(txid: Txid, amount: u64) -> Transaction {
     Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         version: transaction::Version::ONE,
         lock_time: absolute::LockTime::ZERO,
         input: vec![TxIn {
@@ -51,7 +53,7 @@ fn create_one_inp_one_out_tx(txid: Txid, amount: u64) -> Transaction {
         }],
         output: vec![TxOut {
             value: Amount::from_sat(amount),
-            script_pubkey: Address::from_str("bcrt1q3qtze4ys45tgdvguj66zrk4fu6hq3a3v9pfly5")
+            script_pubkey: Address::from_str("rltc1q3qtze4ys45tgdvguj66zrk4fu6hq3a3vmvnkn2")
                 .unwrap()
                 .assume_checked()
                 .script_pubkey(),
@@ -167,7 +169,7 @@ where
     let mut changeset = ChangeSet {
         descriptor: Some(descriptor.clone()),
         change_descriptor: Some(change_descriptor.clone()),
-        network: Some(Network::Testnet),
+        network: Some(Network::Testnet4),
         local_chain: local_chain_changeset,
         tx_graph: tx_graph_changeset,
         indexer: keychain_txout_changeset,
@@ -277,7 +279,7 @@ pub fn persist_multiple_wallet_changesets<Store, CreateStores>(
     let changeset1 = ChangeSet {
         descriptor: Some(descriptor.clone()),
         change_descriptor: Some(change_descriptor.clone()),
-        network: Some(Network::Testnet),
+        network: Some(Network::Testnet4),
         ..ChangeSet::default()
     };
 
@@ -296,7 +298,7 @@ pub fn persist_multiple_wallet_changesets<Store, CreateStores>(
     let changeset2 = ChangeSet {
         descriptor: Some(descriptor.clone()),
         change_descriptor: Some(change_descriptor.clone()),
-        network: Some(Network::Testnet),
+        network: Some(Network::Testnet4),
         ..ChangeSet::default()
     };
 

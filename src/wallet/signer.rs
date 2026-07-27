@@ -70,7 +70,7 @@
 //! let descriptor = "wpkh(tpubD6NzVbkrYhZ4Xferm7Pz4VnjdcDPFyjVu5K4iZXQ4pVN8Cks4pHVowTBXBKRhX64pkRyJZJN5xAKj4UDNnLPb5p2sSKXhewoYx5GbTdUFWq/0/*)";
 //! let change_descriptor = "wpkh(tpubD6NzVbkrYhZ4Xferm7Pz4VnjdcDPFyjVu5K4iZXQ4pVN8Cks4pHVowTBXBKRhX64pkRyJZJN5xAKj4UDNnLPb5p2sSKXhewoYx5GbTdUFWq/1/*)";
 //! let mut wallet = Wallet::create(descriptor, change_descriptor)
-//!     .network(Network::Testnet)
+//!     .network(Network::Testnet4)
 //!     .create_wallet_no_persist()?;
 //! wallet.add_signer(
 //!     KeychainKind::External,

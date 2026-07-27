@@ -22,7 +22,7 @@ use bitcoin::{absolute, psbt, Amount, BlockHash, Network, OutPoint, Sequence, Tx
 use core::fmt;
 
 /// The error type when loading a [`Wallet`](crate::Wallet) from a [`ChangeSet`](crate::ChangeSet).
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LoadError {
     /// There was a problem with the passed-in descriptor(s).
     Descriptor(crate::descriptor::DescriptorError),
@@ -194,6 +194,9 @@ pub enum CreateTxError {
     NoUtxosSelected,
     /// Output created is under the dust limit, 546 satoshis
     OutputBelowDustLimit(usize),
+    /// Output script pubkey is empty (for example an MWEB stealth address, which has no
+    /// transparent script). Transparent wallets cannot pay such destinations.
+    EmptyScriptPubkey(usize),
     /// There was an error with coin selection
     CoinSelection(coin_selection::InsufficientFunds),
     /// Cannot build a tx without recipients
@@ -260,6 +263,12 @@ impl fmt::Display for CreateTxError {
             }
             CreateTxError::OutputBelowDustLimit(limit) => {
                 write!(f, "Output below the dust limit: {limit}")
+            }
+            CreateTxError::EmptyScriptPubkey(index) => {
+                write!(
+                    f,
+                    "Output {index} has an empty script pubkey (not a transparent destination)"
+                )
             }
             CreateTxError::CoinSelection(e) => e.fmt(f),
             CreateTxError::NoRecipients => {

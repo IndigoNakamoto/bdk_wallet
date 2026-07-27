@@ -1,11 +1,14 @@
+# Standalone package (not a member of the sibling BDK workspace).
+[workspace]
+
 [package]
 name = "bdk_wallet"
 homepage = "https://bitcoindevkit.org"
-version = "3.0.0-alpha.0"
-repository = "https://github.com/bitcoindevkit/bdk_wallet"
+version = "3.1.0-litecoin.0"
+repository = "https://github.com/IndigoNakamoto/bdk_wallet"
 documentation = "https://docs.rs/bdk_wallet"
-description = "A modern, lightweight, descriptor-based wallet library"
-keywords = ["bitcoin", "wallet", "descriptor", "psbt"]
+description = "A modern, lightweight, descriptor-based wallet library for Litecoin"
+keywords = ["litecoin", "wallet", "descriptor", "psbt"]
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 authors = ["Bitcoin Dev Kit Developers"]
@@ -20,18 +23,19 @@ rustdoc-args = ["--cfg", "docsrs"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 
 [dependencies]
-bdk_chain = { version = "0.23.1", features = ["miniscript", "serde"], default-features = false }
-bitcoin = { version = "0.32.7", features = ["serde", "base64"], default-features = false }
-miniscript = { version = "12.3.1", features = ["serde"], default-features = false }
-rand_core = { version = "0.6.0" }
+# Nested clone uses path deps against the sibling Litecoin BDK crates.
+bdk_chain = { path = "../crates/chain", version = "0.23.2", features = ["miniscript", "serde"], default-features = false }
+bitcoin = { package = "litecoin", version = "0.32.8-rc.1", features = ["serde", "base64"], default-features = false }
+miniscript = { git = "https://github.com/IndigoNakamoto/rust-miniscript", rev = "e3187272617adad69f5b9ece62d25ea28b70fd25", features = ["serde"], default-features = false }
+rand_core = { version = "0.6.4" }
 serde_json = { version = "1" }
 serde = { version = "1", features = ["derive"] }
 
 # Optional dependencies
-anyhow = { version = "1.0.98", optional = true }
-bdk_file_store = { version = "0.22.0", optional = true }
-bip39 = { version = "2.0", optional = true }
-tempfile = { version = "3.20.0", optional = true }
+anyhow = { version = "1", optional = true }
+bdk_file_store = { path = "../crates/file_store", version = "0.22.0", optional = true }
+bip39 = { version = "2.2.2", optional = true }
+tempfile = { version = "3.26.0", optional = true }
 
 [features]
 default = ["std"]
@@ -46,12 +50,11 @@ test-utils = ["std", "anyhow", "tempfile"]
 [dev-dependencies]
 anyhow = "1"
 assert_matches = "1.5.0"
-bdk_bitcoind_rpc = { version = "0.22.0" }
-bdk_electrum = { version = "0.23.1" }
-bdk_esplora = { version = "0.22.1", features = ["async-https", "blocking-https", "tokio"] }
+bdk_electrum = { path = "../crates/electrum", version = "0.23.2" }
+bdk_esplora = { path = "../crates/esplora", version = "0.22.1", features = ["async-https", "blocking-https", "tokio"] }
 bdk_wallet = { path = ".", features = ["rusqlite", "file_store", "test-utils"] }
-clap = { version = "4.5.17", features = ["derive", "env"] }
-ctrlc = "3.4.6"
+clap = { version = "4.5.60", features = ["derive", "env"] }
+ctrlc = "3.5.2"
 rand = "0.8"
 tempfile = "3"
 tokio = { version = "1.38.1", features = ["rt", "rt-multi-thread", "macros"] }
@@ -74,31 +77,3 @@ name = "esplora_async"
 
 [[example]]
 name = "esplora_blocking"
-
-[[example]]
-name = "bitcoind_rpc"
-
-
-[patch.crates-io.bdk_chain]
-git = "https://github.com/bitcoindevkit/bdk"
-rev = "b4c8c6a110de14c1b04d2a525cd8fb3e4d67cec6"
-
-[patch.crates-io.bdk_core]
-git = "https://github.com/bitcoindevkit/bdk"
-rev = "b4c8c6a110de14c1b04d2a525cd8fb3e4d67cec6"
-
-[patch.crates-io.bdk_bitcoind_rpc]
-git = "https://github.com/bitcoindevkit/bdk"
-rev = "b4c8c6a110de14c1b04d2a525cd8fb3e4d67cec6"
-
-[patch.crates-io.bdk_electrum]
-git = "https://github.com/bitcoindevkit/bdk"
-rev = "b4c8c6a110de14c1b04d2a525cd8fb3e4d67cec6"
-
-[patch.crates-io.bdk_esplora]
-git = "https://github.com/bitcoindevkit/bdk"
-rev = "b4c8c6a110de14c1b04d2a525cd8fb3e4d67cec6"
-
-[patch.crates-io.bdk_file_store]
-git = "https://github.com/bitcoindevkit/bdk"
-rev = "b4c8c6a110de14c1b04d2a525cd8fb3e4d67cec6"

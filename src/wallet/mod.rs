@@ -30,8 +30,8 @@ use bdk_chain::{
         SyncResponse,
     },
     tx_graph::{CalculateFeeError, TxGraph, TxUpdate},
-    BlockId, CanonicalTx, CanonicalizationParams, ChainPosition, ConfirmationBlockTime,
-    DescriptorExt, FullTxOut, Indexed, IndexedTxGraph, Indexer, Merge,
+    BlockId, CanonicalParams, CanonicalTx, CanonicalTxOut, ChainPosition, ConfirmationBlockTime,
+    DescriptorExt, Indexed, IndexedTxGraph, Indexer, Merge,
 };
 use bitcoin::{
     absolute,
@@ -184,7 +184,7 @@ impl fmt::Display for AddressInfo {
 }
 
 /// A `CanonicalTx` managed by a `Wallet`.
-pub type WalletTx = CanonicalTx<ConfirmationBlockTime>;
+pub type WalletTx = CanonicalTx<ChainPosition<ConfirmationBlockTime>>;
 
 impl Wallet {
     /// Build a new single descriptor [`Wallet`].
@@ -218,7 +218,7 @@ impl Wallet {
     /// use bdk_wallet::rusqlite::Connection;
     /// let mut conn = Connection::open(file_path)?;
     /// let wallet = Wallet::create_single(EXTERNAL_DESC)
-    ///     .network(Network::Testnet)
+    ///     .network(Network::Testnet4)
     ///     .create_wallet(&mut conn)?;
     /// # Ok::<_, anyhow::Error>(())
     /// ```
@@ -248,7 +248,7 @@ impl Wallet {
     /// # const INTERNAL_DESC: &str = "wpkh(tprv8ZgxMBicQKsPdy6LMhUtFHAgpocR8GC6QmwMSFpZs7h6Eziw3SpThFfczTDh5rW2krkqffa11UpX3XkeTTB2FvzZKWXqPY54Y6Rq4AQ5R8L/84'/1'/0'/1/*)";
     /// // Create a non-persisted wallet.
     /// let wallet = Wallet::create(EXTERNAL_DESC, INTERNAL_DESC)
-    ///     .network(Network::Testnet)
+    ///     .network(Network::Testnet4)
     ///     .create_wallet_no_persist()?;
     ///
     /// // Create a wallet that is persisted to SQLite database.
@@ -257,7 +257,7 @@ impl Wallet {
     /// use bdk_wallet::rusqlite::Connection;
     /// let mut conn = Connection::open(file_path)?;
     /// let wallet = Wallet::create(EXTERNAL_DESC, INTERNAL_DESC)
-    ///     .network(Network::Testnet)
+    ///     .network(Network::Testnet4)
     ///     .create_wallet(&mut conn)?;
     /// # Ok(())
     /// # }
@@ -292,7 +292,7 @@ impl Wallet {
     /// # use bdk_wallet::KeychainKind;
     /// # const TWO_PATH_DESC: &str = "wpkh([9a6a2580/84'/1'/0']tpubDDnGNapGEY6AZAdQbfRJgMg9fvz8pUBrLwvyvUqEgcUfgzM6zc2eVK4vY9x9L5FJWdX8WumXuLEDV5zDZnTfbn87vLe9XceCFwTu9so9Kks/<0;1>/*)";
     /// let wallet = Wallet::create_from_two_path_descriptor(TWO_PATH_DESC)
-    ///     .network(Network::Testnet)
+    ///     .network(Network::Testnet4)
     ///     .create_wallet_no_persist()
     ///     .unwrap();
     ///
@@ -367,10 +367,7 @@ impl Wallet {
             params.use_spk_cache,
         )?;
 
-        let canonical_view = tx_graph.canonical_view(
-            &chain,
-            chain.tip().block_id(),
-            CanonicalizationParams::default(),
+        let canonical_view = chain.canonical_view(tx_graph.graph(), chain.tip().block_id(), CanonicalParams::default(),
         );
 
         Ok(Wallet {
@@ -581,10 +578,7 @@ impl Wallet {
         )
         .map_err(LoadError::Descriptor)?;
 
-        let canonical_view = tx_graph.canonical_view(
-            &chain,
-            chain.tip().block_id(),
-            CanonicalizationParams::default(),
+        let canonical_view = chain.canonical_view(tx_graph.graph(), chain.tip().block_id(), CanonicalParams::default(),
         );
 
         Ok(Some(Wallet {
@@ -834,17 +828,20 @@ impl Wallet {
     /// Obtain a new [`CanonicalView`] modified by the `params`.
     ///
     /// Note, the result of this call is not stored anywhere.
-    pub fn canonical_view_with_params(&self, params: CanonicalizationParams) -> CanonicalView {
-        self.tx_graph
-            .canonical_view(&self.chain, self.chain.tip().block_id(), params)
+    pub fn canonical_view_with_params(&self, params: CanonicalParams) -> CanonicalView {
+        self.chain.canonical_view(
+            self.tx_graph.graph(),
+            self.chain.tip().block_id(),
+            params,
+        )
     }
 
     /// Update the wallet's [`CanonicalView`] of transactions.
     fn update_canonical_view(&mut self) {
-        self.canonical_view = self.tx_graph.canonical_view(
-            &self.chain,
+        self.canonical_view = self.chain.canonical_view(
+            self.tx_graph.graph(),
             self.chain.tip().block_id(),
-            CanonicalizationParams::default(),
+            CanonicalParams::default(),
         )
     }
 
@@ -1191,7 +1188,7 @@ impl Wallet {
     /// let descriptor = "wpkh(tprv8ZgxMBicQKsPe73PBRSmNbTfbcsZnwWhz5eVmhHpi31HW29Z7mc9B4cWGRQzopNUzZUT391DeDJxL2PefNunWyLgqCKRMDkU1s2s8bAfoSk/84'/1'/0'/0/*)";
     /// let change_descriptor = "wpkh(tprv8ZgxMBicQKsPe73PBRSmNbTfbcsZnwWhz5eVmhHpi31HW29Z7mc9B4cWGRQzopNUzZUT391DeDJxL2PefNunWyLgqCKRMDkU1s2s8bAfoSk/84'/1'/0'/1/*)";
     /// let wallet = Wallet::create(descriptor, change_descriptor)
-    ///     .network(Network::Testnet)
+    ///     .network(Network::Testnet4)
     ///     .create_wallet_no_persist()?;
     /// for secret_key in wallet.get_signers(KeychainKind::External).signers().iter().filter_map(|s| s.descriptor_secret_key()) {
     ///     // secret_key: tprv8ZgxMBicQKsPe73PBRSmNbTfbcsZnwWhz5eVmhHpi31HW29Z7mc9B4cWGRQzopNUzZUT391DeDJxL2PefNunWyLgqCKRMDkU1s2s8bAfoSk/84'/0'/0'/0/*
@@ -1415,6 +1412,8 @@ impl Wallet {
         };
 
         let mut tx = Transaction {
+            mw_tx: None,
+            is_hog_ex: false,
             version,
             lock_time,
             input: vec![],
@@ -1429,6 +1428,11 @@ impl Wallet {
         let recipients = params.recipients.iter().map(|(r, v)| (r, *v));
 
         for (index, (script_pubkey, value)) in recipients.enumerate() {
+            // MWEB stealth addresses (`ltcmweb1…`) expose an empty script pubkey. Paying them as a
+            // transparent output is never valid.
+            if script_pubkey.is_empty() {
+                return Err(CreateTxError::EmptyScriptPubkey(index));
+            }
             if !params.allow_dust && value.is_dust(script_pubkey) && !script_pubkey.is_op_return() {
                 return Err(CreateTxError::OutputBelowDustLimit(index));
             }
@@ -2783,13 +2787,13 @@ where
 fn new_local_utxo(
     keychain: KeychainKind,
     derivation_index: u32,
-    full_txo: FullTxOut<ConfirmationBlockTime>,
+    full_txo: CanonicalTxOut<ChainPosition<ConfirmationBlockTime>>,
 ) -> LocalOutput {
     LocalOutput {
         outpoint: full_txo.outpoint,
         txout: full_txo.txout,
         is_spent: full_txo.spent_by.is_some(),
-        chain_position: full_txo.chain_position,
+        chain_position: full_txo.pos,
         keychain,
         derivation_index,
     }
@@ -2881,6 +2885,8 @@ macro_rules! doctest_wallet {
             .unwrap();
         let address = wallet.peek_address(KeychainKind::External, 0).address;
         let tx = Transaction {
+            mw_tx: None,
+            is_hog_ex: false,
             version: transaction::Version::TWO,
             lock_time: absolute::LockTime::ZERO,
             input: vec![],
@@ -2917,11 +2923,13 @@ mod test {
 
         // Create new wallet.
         let mut wallet = Wallet::create(external_desc, internal_desc)
-            .network(Network::Testnet)
+            .network(Network::Testnet4)
             .create_wallet_no_persist()
             .unwrap();
 
         let two_output_tx = Transaction {
+            mw_tx: None,
+            is_hog_ex: false,
             input: vec![],
             output: vec![
                 TxOut {
@@ -2972,7 +2980,7 @@ mod test {
 
         // Test successful creation of a two-path wallet
         let params = Wallet::create_from_two_path_descriptor(two_path_descriptor);
-        let wallet = params.network(Network::Testnet).create_wallet_no_persist();
+        let wallet = params.network(Network::Testnet4).create_wallet_no_persist();
         assert!(wallet.is_ok());
 
         let wallet = wallet.unwrap();
@@ -3005,7 +3013,7 @@ mod test {
         // Test with invalid single-path descriptor
         let single_path_descriptor = "wpkh([9a6a2580/84'/1'/0']tpubDDnGNapGEY6AZAdQbfRJgMg9fvz8pUBrLwvyvUqEgcUfgzM6zc2eVK4vY9x9L5FJWdX8WumXuLEDV5zDZnTfbn87vLe9XceCFwTu9so9Kks/0/*)";
         let params = Wallet::create_from_two_path_descriptor(single_path_descriptor);
-        let wallet = params.network(Network::Testnet).create_wallet_no_persist();
+        let wallet = params.network(Network::Testnet4).create_wallet_no_persist();
         assert!(matches!(wallet, Err(DescriptorError::MultiPath)));
 
         // Test with a private descriptor
@@ -3013,7 +3021,7 @@ mod test {
         // into a public key.")) error.
         let private_multipath_descriptor = "wpkh(tprv8ZgxMBicQKsPdWAHbugK2tjtVtRjKGixYVZUdL7xLHMgXZS6BFbFi1UDb1CHT25Z5PU1F9j7wGxwUiRhqz9E3nZRztikGUV6HoRDYcqPhM4/84'/1'/0'/<0;1>/*)";
         let params = Wallet::create_from_two_path_descriptor(private_multipath_descriptor);
-        let wallet = params.network(Network::Testnet).create_wallet_no_persist();
+        let wallet = params.network(Network::Testnet4).create_wallet_no_persist();
         assert!(matches!(
             wallet,
             Err(DescriptorError::Miniscript(Unexpected(..)))
@@ -3022,13 +3030,13 @@ mod test {
         // Test with invalid 3-path multipath descriptor
         let three_path_descriptor = "wpkh([9a6a2580/84'/1'/0']tpubDDnGNapGEY6AZAdQbfRJgMg9fvz8pUBrLwvyvUqEgcUfgzM6zc2eVK4vY9x9L5FJWdX8WumXuLEDV5zDZnTfbn87vLe9XceCFwTu9so9Kks/<0;1;2>/*)";
         let params = Wallet::create_from_two_path_descriptor(three_path_descriptor);
-        let wallet = params.network(Network::Testnet).create_wallet_no_persist();
+        let wallet = params.network(Network::Testnet4).create_wallet_no_persist();
         assert!(matches!(wallet, Err(DescriptorError::MultiPath)));
 
         // Test with completely invalid descriptor
         let invalid_descriptor = "invalid_descriptor";
         let params = Wallet::create_from_two_path_descriptor(invalid_descriptor);
-        let wallet = params.network(Network::Testnet).create_wallet_no_persist();
+        let wallet = params.network(Network::Testnet4).create_wallet_no_persist();
         assert!(wallet.is_err());
     }
 }

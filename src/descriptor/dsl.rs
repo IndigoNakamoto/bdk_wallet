@@ -905,7 +905,7 @@ mod test {
             descriptor!(sh(multi(1, pubkey1, pubkey2))),
             false,
             true,
-            &["2MymURoV1bzuMnWMGiXzyomDkeuxXY7Suey"],
+            &["QT8EYpMFd6xSvh7KLe2ztTfBoJQMUXYbtq"],
         );
     }
 
@@ -924,25 +924,25 @@ mod test {
             descriptor!(wpkh(pubkey1)),
             true,
             true,
-            &["bcrt1qngw83fg8dz0k749cg7k3emc7v98wy0c7azaa6h"],
+            &["rltc1qngw83fg8dz0k749cg7k3emc7v98wy0c7r085df"],
         );
         check(
             descriptor!(sh(wpkh(pubkey1))),
             true,
             true,
-            &["2N5LiC3CqzxDamRTPG1kiNv1FpNJQ7x28sb"],
+            &["QYhUK45624GfucDRt7njTcSgxkkE1dadwM"],
         );
         check(
             descriptor!(wsh(multi(1, pubkey1, pubkey2))),
             true,
             true,
-            &["bcrt1qgw8jvv2hsrvjfa6q66rk6har7d32lrqm5unnf5cl63q9phxfvgps5fyfqe"],
+            &["rltc1qgw8jvv2hsrvjfa6q66rk6har7d32lrqm5unnf5cl63q9phxfvgpsu2wk05"],
         );
         check(
             descriptor!(sh(wsh(multi(1, pubkey1, pubkey2)))),
             true,
             true,
-            &["2NCidRJysy7apkmE6JF5mLLaJFkrN3Ub9iy"],
+            &["Qg5PYKr7zDdutwz8vM7nR31jQ9JBvBkDhn"],
         );
     }
 
@@ -961,7 +961,7 @@ mod test {
             descriptor!(sh(wsh(and_or(pk(redeem_key), older(1000), pk(move_key))))),
             true,
             true,
-            &["2MypGwr5eQWAWWJtiJgUEToVxc4zuokjQRe"],
+            &["QTB34rwtRcDbeVekvnWFYVwPkTSjiGtZGs"],
         );
     }
 
@@ -1003,9 +1003,9 @@ mod test {
             false,
             false,
             &[
-                "2MtMDXsfwefZkEEhVViEPidvcKRUtJamJJ8",
-                "2MwAUZ1NYyWjhVvGTethFL6n7nZhS8WE6At",
-                "2MuT6Bj66HLwZd7s4SoD8XbK4GwriKEA6Gr",
+                "QMhyetYBfmcqNRTY7pGQoLN3Tovi9xebLQ",
+                "QQXEg2Enzcnne72WGzjGQoDYvx9G3KTeoh",
+                "QNorJjxLJSzemJd74uF9cHkVRLJYC2s1LA",
             ],
         );
     }
@@ -1021,9 +1021,9 @@ mod test {
             true,
             false,
             &[
-                "bcrt1qnhm8w9fhc8cxzgqsmqdf9fyjccyvc0gltnymu0",
-                "bcrt1qhylfd55rn75w9fj06zspctad5w4hz33rf0ttad",
-                "bcrt1qq5sq3a6k9av9d8cne0k9wcldy4nqey5yt6889r",
+                "rltc1qnhm8w9fhc8cxzgqsmqdf9fyjccyvc0gl477jt3",
+                "rltc1qhylfd55rn75w9fj06zspctad5w4hz33rhz3z2n",
+                "rltc1qq5sq3a6k9av9d8cne0k9wcldy4nqey5y4hawja",
             ],
         );
 
@@ -1033,9 +1033,9 @@ mod test {
             true,
             false,
             &[
-                "2MxvjQCaLqZ5QxZ7XotZDQ63hZw3NPss763",
-                "2NDUoevN4QMzhvHDMGhKuiT2fN9HXbFRMwn",
-                "2NF4BEAY2jF1Fu8vqfN3NVKoFtom77pUxrx",
+                "QSHVXDSarf8W6jsaRzbEUnV8iKVCN65SaD",
+                "QgqZmwEJRU3o4TyPtoMvo9U6WXjMP43EPP",
+                "QiQwMBQGkM4M3KgtHU5Pa2Eh3CCw16ihQB",
             ],
         );
 
@@ -1047,9 +1047,9 @@ mod test {
             true,
             false,
             &[
-                "bcrt1qfxv8mxmlv5sz8q2mnuyaqdfe9jr4vvmx0csjhn092p6f4qfygfkq2hng49",
-                "bcrt1qerj85g243e6jlcdxpmn9spk0gefcwvu7nw7ee059d5ydzpdhkm2qwfkf5k",
-                "bcrt1qxkl2qss3k58q9ktc8e89pwr4gnptfpw4hju4xstxcjc0hkcae3jstluty7",
+                "rltc1qfxv8mxmlv5sz8q2mnuyaqdfe9jr4vvmx0csjhn092p6f4qfygfkqz5eh6g",
+                "rltc1qerj85g243e6jlcdxpmn9spk0gefcwvu7nw7ee059d5ydzpdhkm2qx2ukmm",
+                "rltc1qxkl2qss3k58q9ktc8e89pwr4gnptfpw4hju4xstxcjc0hkcae3jsruk5tn",
             ],
         );
 
@@ -1060,9 +1060,9 @@ mod test {
             true,
             false,
             &[
-                "2NFCtXvx9q4ci2kvKub17iSTgvRXGctCGhz",
-                "2NB2PrFPv5NxWCpygas8tPrGJG2ZFgeuwJw",
-                "2N79ZAGo5cMi5Jt7Wo9L5YmF5GkEw7sjWdC",
+                "QiZeewpPrAfoAwgNXh38o8u84oy6RWmPU7",
+                "QeP9yGGA6V1bM1jjCyAuUYhjQR15fFHkWo",
+                "QaWKHHfKdTmAT4sZRFN6dTgWR8gkyArGZc",
             ],
         );
     }
@@ -1083,12 +1083,12 @@ mod test {
             false,
             false,
             &[
-                "2MsxzPEJDBzpGffJXPaDpfXZAUNnZhaMh2N",
-                "2My3x3DLPK3UbGWGpxrXr1RnbD8MNC4FpgS",
-                "2NByEuiQT7YLqHCTNxL5KwYjvtuCYcXNBSC",
-                "2N1TGbP81kj2VUKTSWgrwxoMfuWjvfUdyu7",
-                "2N3Bomq2fpAcLRNfZnD3bCWK9quan28CxCR",
-                "2N9nrZaEzEFDqEAU9RPvDnXGT6AVwBDKAQb",
+                "QMKkWFATD6sMor4a1gFqkDzbcmEPbU3Hrc",
+                "QSQiAECdL9XgQh2saxZs68E2MWoC5KbuPc",
+                "QfL12jGh8ePvRPDRaS7M2FBN3HeNRQh4Xi",
+                "QUp2iPzFmq5acWDV8nty3Vo73uBkYyo9s1",
+                "QWYZtqtuqGfRZZRcQK5cHCkazJ2bxT3MZX",
+                "Qd9cgb7EFMGvNMEC3VxEsDhtEYwm6qX1aJ",
             ],
         );
 
@@ -1101,12 +1101,12 @@ mod test {
             true,
             false,
             &[
-                "2NCogc5YyM4N6ruv1hUa7WLMW1BPeCK7N9B",
-                "2N6mkSAKi1V2oaBXby7XHdvBMKEDRQcFpNe",
-                "2NFmTSttm9v6bXeoWaBvpMcgfPQcZhNn3Eh",
-                "2Mvib87RBPUHXNEpX5S5Kv1qqrhBfgBGsJM",
-                "2MtMv5mcK2EjcLsH8Txpx2JxLLzHr4ttczL",
-                "2MsWCB56rb4T6yPv8QudZGHERTwNgesE4f6",
+                "QgASj6RDNARC16g4Kac8b2nw9ZqUAmaLuz",
+                "Qa8WZBBx2b5tiNHebDZJiccnTcfFJpe5gB",
+                "Qj8DZum1B29gfqZZCHxqSK86Xo4PdjFiDd",
+                "QQ5MF8HRQaLcWRaZhY7LziHH15dVYRwdLr",
+                "QMigCnUZ3LnhV43B64ry71PmVNjfywzVXk",
+                "QLrxJ5y6cAWC7agB31faLyfrcKpWXuB7VE",
             ],
         );
 
@@ -1115,12 +1115,12 @@ mod test {
             true,
             false,
             &[
-                "bcrt1qcvq0lg8q7a47ytrd7zk5y7uls7mulrenjgvflwylpppgwf8029es4vhpnj",
-                "bcrt1q80yn8sdt6l7pjvkz25lglyaqctlmsq9ugk80rmxt8yu0npdsj97sc7l4de",
-                "bcrt1qrvf6024v9s50qhffe3t2fr2q9ckdhx2g6jz32chm2pp24ymgtr5qfrdmct",
-                "bcrt1q6srfmra0ynypym35c7jvsxt2u4yrugeajq95kg2ps7lk6h2gaunsq9lzxn",
-                "bcrt1qhl8rrzzcdpu7tcup3lcg7tge52sqvwy5fcv4k78v6kxtwmqf3v6qpvyjza",
-                "bcrt1ql2elz9mhm9ll27ddpewhxs732xyl2fk2kpkqz9gdyh33wgcun4vstrd49k",
+                "rltc1qcvq0lg8q7a47ytrd7zk5y7uls7mulrenjgvflwylpppgwf8029esa0a7ul",
+                "rltc1q80yn8sdt6l7pjvkz25lglyaqctlmsq9ugk80rmxt8yu0npdsj97ssa42z5",
+                "rltc1qrvf6024v9s50qhffe3t2fr2q9ckdhx2g6jz32chm2pp24ymgtr5qpq8yhx",
+                "rltc1q6srfmra0ynypym35c7jvsxt2u4yrugeajq95kg2ps7lk6h2gaunsgx4af7",
+                "rltc1qhl8rrzzcdpu7tcup3lcg7tge52sqvwy5fcv4k78v6kxtwmqf3v6qf0wdds",
+                "rltc1ql2elz9mhm9ll27ddpewhxs732xyl2fk2kpkqz9gdyh33wgcun4vsrq822m",
             ],
         );
     }
@@ -1210,7 +1210,7 @@ mod test {
     #[should_panic(expected = "Miniscript(ContextError(UncompressedKeysNotAllowed))")]
     fn test_dsl_miniscript_checks() {
         let mut uncompressed_pk =
-            PrivateKey::from_wif("L5EZftvrYaSudiozVRzTqLcHLNDoVn7H5HSfM9BAN6tMJX8oTWz6").unwrap();
+            PrivateKey::from_wif("TB4q7eE2wxRWQZSs34wL3h9fHDs7Zs8AtVLvCwohw54WpQi6R5aK").unwrap();
         uncompressed_pk.compressed = false;
 
         descriptor!(wsh(v: pk(uncompressed_pk))).unwrap();

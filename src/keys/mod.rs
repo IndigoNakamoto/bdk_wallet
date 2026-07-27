@@ -1093,7 +1093,7 @@ mod test {
         assert_eq!(generated_wif.valid_network_kinds, mainnet_network_kind());
         assert_eq!(
             generated_wif.to_string(),
-            "L2wTu6hQrnDMiFNWA5na6jB12ErGQqtXwqpSL7aWquJaZG8Ai3ch"
+            "T8mjLqzbGABxV61NhijSK5iNy6VaUvuRm3ihBvD4QsUk59ihMbyT"
         );
     }
 

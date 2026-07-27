@@ -285,6 +285,8 @@ fn test_bump_fee_drain_wallet() {
     let (mut wallet, _) = get_funded_wallet_wpkh();
     // receive an extra tx so that our wallet has two utxos.
     let tx = Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         version: transaction::Version::ONE,
         lock_time: absolute::LockTime::ZERO,
         input: vec![],
@@ -347,6 +349,8 @@ fn test_bump_fee_remove_output_manually_selected_only() {
     // existing output. In other words, bump_fee + manually_selected_only is always an error
     // unless there is a change output.
     let init_tx = Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         version: transaction::Version::ONE,
         lock_time: absolute::LockTime::ZERO,
         input: vec![],
@@ -398,6 +402,8 @@ fn test_bump_fee_remove_output_manually_selected_only() {
 fn test_bump_fee_add_input() {
     let (mut wallet, _) = get_funded_wallet_wpkh();
     let init_tx = Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         version: transaction::Version::ONE,
         lock_time: absolute::LockTime::ZERO,
         input: vec![],
@@ -777,6 +783,8 @@ fn test_legacy_bump_fee_drain_wallet() {
     let (mut wallet, _) = get_funded_wallet_single(get_test_pkh());
     // receive an extra tx so that our wallet has two utxos.
     let tx = Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         version: transaction::Version::ONE,
         lock_time: absolute::LockTime::ZERO,
         input: vec![],
@@ -833,6 +841,8 @@ fn test_legacy_bump_fee_drain_wallet() {
 fn test_legacy_bump_fee_add_input() {
     let (mut wallet, _) = get_funded_wallet_single(get_test_pkh());
     let init_tx = Transaction {
+        mw_tx: None,
+        is_hog_ex: false,
         version: transaction::Version::ONE,
         lock_time: absolute::LockTime::ZERO,
         input: vec![],

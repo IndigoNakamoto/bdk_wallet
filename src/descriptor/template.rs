@@ -85,7 +85,7 @@ impl<T: DescriptorTemplate> IntoWalletDescriptor for T {
 /// let key_internal =
 ///     bitcoin::PrivateKey::from_wif("cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW")?;
 /// let mut wallet = Wallet::create(P2Pkh(key_external), P2Pkh(key_internal))
-///     .network(Network::Testnet)
+///     .network(Network::Testnet4)
 ///     .create_wallet_no_persist()?;
 ///
 /// assert_eq!(
@@ -120,14 +120,14 @@ impl<K: IntoDescriptorKey<Legacy>> DescriptorTemplate for P2Pkh<K> {
 /// let key_internal =
 ///     bitcoin::PrivateKey::from_wif("cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW")?;
 /// let mut wallet = Wallet::create(P2Wpkh_P2Sh(key_external), P2Wpkh_P2Sh(key_internal))
-///     .network(Network::Testnet)
+///     .network(Network::Testnet4)
 ///     .create_wallet_no_persist()?;
 ///
 /// assert_eq!(
 ///     wallet
 ///         .next_unused_address(KeychainKind::External)
 ///         .to_string(),
-///     "2NB4ox5VDRw1ecUv6SnT3VQHPXveYztRqk5"
+///     "QeRa56MTT34jkfg94tV4a6ipgK6NsjbGBY"
 /// );
 /// # Ok::<_, Box<dyn std::error::Error>>(())
 /// ```
@@ -156,14 +156,14 @@ impl<K: IntoDescriptorKey<Segwitv0>> DescriptorTemplate for P2Wpkh_P2Sh<K> {
 /// let key_internal =
 ///     bitcoin::PrivateKey::from_wif("cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW")?;
 /// let mut wallet = Wallet::create(P2Wpkh(key_external), P2Wpkh(key_internal))
-///     .network(Network::Testnet)
+///     .network(Network::Testnet4)
 ///     .create_wallet_no_persist()?;
 ///
 /// assert_eq!(
 ///     wallet
 ///         .next_unused_address(KeychainKind::External)
 ///         .to_string(),
-///     "tb1q4525hmgw265tl3drrl8jjta7ayffu6jf68ltjd"
+///     "tltc1q4525hmgw265tl3drrl8jjta7ayffu6jfr0a4zy"
 /// );
 /// # Ok::<_, Box<dyn std::error::Error>>(())
 /// ```
@@ -191,14 +191,14 @@ impl<K: IntoDescriptorKey<Segwitv0>> DescriptorTemplate for P2Wpkh<K> {
 /// let key_internal =
 ///     bitcoin::PrivateKey::from_wif("cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW")?;
 /// let mut wallet = Wallet::create(P2TR(key_external), P2TR(key_internal))
-///     .network(Network::Testnet)
+///     .network(Network::Testnet4)
 ///     .create_wallet_no_persist()?;
 ///
 /// assert_eq!(
 ///     wallet
 ///         .next_unused_address(KeychainKind::External)
 ///         .to_string(),
-///     "tb1pvjf9t34fznr53u5tqhejz4nr69luzkhlvsdsdfq9pglutrpve2xq7hps46"
+///     "tltc1pvjf9t34fznr53u5tqhejz4nr69luzkhlvsdsdfq9pglutrpve2xqp5a329"
 /// );
 /// # Ok::<_, Box<dyn std::error::Error>>(())
 /// ```
@@ -228,7 +228,7 @@ impl<K: IntoDescriptorKey<Tap>> DescriptorTemplate for P2TR<K> {
 ///
 /// let key = bitcoin::bip32::Xpriv::from_str("tprv8ZgxMBicQKsPeZRHk4rTG6orPS2CRNFX3njhUXx5vj9qGog5ZMH4uGReDWN5kCkY3jmWEtWause41CDvBRXD1shKknAMKxT99o9qUTRVC6m")?;
 /// let mut wallet = Wallet::create(Bip44(key.clone(), KeychainKind::External), Bip44(key, KeychainKind::Internal))
-///     .network(Network::Testnet)
+///     .network(Network::Testnet4)
 ///     .create_wallet_no_persist()?;
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "mmogjc7HJEZkrLqyQYqJmxUqFaC7i4uf89");
@@ -252,7 +252,7 @@ impl<K: DerivableKey<Legacy>> DescriptorTemplate for Bip44<K> {
 
 /// BIP44 public template. Expands to `pkh(key/{0,1}/*)`
 ///
-/// This assumes that the key used has already been derived with `m/44'/0'/0'` for Mainnet or
+/// This assumes that the key used has already been derived with `m/44'/2'/0'` for Mainnet or
 /// `m/44'/1'/0'` for Testnet.
 ///
 /// This template requires the parent fingerprint to populate correctly the metadata of PSBTs.
@@ -274,7 +274,7 @@ impl<K: DerivableKey<Legacy>> DescriptorTemplate for Bip44<K> {
 ///     Bip44Public(key.clone(), fingerprint, KeychainKind::External),
 ///     Bip44Public(key, fingerprint, KeychainKind::Internal),
 ///     )
-///     .network(Network::Testnet)
+///     .network(Network::Testnet4)
 /// .create_wallet_no_persist()?;
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "miNG7dJTzJqNbFS19svRdTCisC65dsubtR");
@@ -317,10 +317,10 @@ impl<K: DerivableKey<Legacy>> DescriptorTemplate for Bip44Public<K> {
 ///     Bip49(key.clone(), KeychainKind::External),
 ///     Bip49(key, KeychainKind::Internal),
 /// )
-/// .network(Network::Testnet)
+/// .network(Network::Testnet4)
 /// .create_wallet_no_persist()?;
 ///
-/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "2N4zkWAoGdUv4NXhSsU8DvS5MB36T8nKHEB");
+/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "QYMWdBfWeay9WiTVVaAF18WnKRYH57qf5b");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "sh(wpkh([c55b303f/49'/1'/0']tpubDDYr4kdnZgjjShzYNjZUZXUUtpXaofdkMaipyS8ThEh45qFmhT4hKYways7UXmg6V7het1QiFo9kf4kYUXyDvV4rHEyvSpys9pjCB3pukxi/0/*))#s9vxlc8e");
 /// # Ok::<_, Box<dyn std::error::Error>>(())
 /// ```
@@ -341,7 +341,7 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip49<K> {
 
 /// BIP49 public template. Expands to `sh(wpkh(key/{0,1}/*))`
 ///
-/// This assumes that the key used has already been derived with `m/49'/0'/0'` for Mainnet or
+/// This assumes that the key used has already been derived with `m/49'/2'/0'` for Mainnet or
 /// `m/49'/1'/0'` for Testnet.
 ///
 /// This template requires the parent fingerprint to populate correctly the metadata of PSBTs.
@@ -363,10 +363,10 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip49<K> {
 ///     Bip49Public(key.clone(), fingerprint, KeychainKind::External),
 ///     Bip49Public(key, fingerprint, KeychainKind::Internal),
 /// )
-/// .network(Network::Testnet)
+/// .network(Network::Testnet4)
 /// .create_wallet_no_persist()?;
 ///
-/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "2N3K4xbVAHoiTQSwxkZjWDfKoNC27pLkYnt");
+/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "QWfq5cMQJumYYdi1NfmXJMmEWaTwgnUaut");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "sh(wpkh([c55b303f/49'/1'/0']tpubDC49r947KGK52X5rBWS4BLs5m9SRY3pYHnvRrm7HcybZ3BfdEsGFyzCMzayi1u58eT82ZeyFZwH7DD6Q83E3fM9CpfMtmnTygnLfP59jL9L/0/*))#3tka9g0q");
 /// # Ok::<_, Box<dyn std::error::Error>>(())
 /// ```
@@ -406,10 +406,10 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip49Public<K> {
 ///     Bip84(key.clone(), KeychainKind::External),
 ///     Bip84(key, KeychainKind::Internal),
 /// )
-/// .network(Network::Testnet)
+/// .network(Network::Testnet4)
 /// .create_wallet_no_persist()?;
 ///
-/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tb1qhl85z42h7r4su5u37rvvw0gk8j2t3n9y7zsg4n");
+/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tltc1qhl85z42h7r4su5u37rvvw0gk8j2t3n9y82jk96");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "wpkh([c55b303f/84'/1'/0']tpubDDc5mum24DekpNw92t6fHGp8Gr2JjF9J7i4TZBtN6Vp8xpAULG5CFaKsfugWa5imhrQQUZKXe261asP5koDHo5bs3qNTmf3U3o4v9SaB8gg/0/*)#6kfecsmr");
 /// # Ok::<_, Box<dyn std::error::Error>>(())
 /// ```
@@ -430,7 +430,7 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84<K> {
 
 /// BIP84 public template. Expands to `wpkh(key/{0,1}/*)`
 ///
-/// This assumes that the key used has already been derived with `m/84'/0'/0'` for Mainnet or
+/// This assumes that the key used has already been derived with `m/84'/2'/0'` for Mainnet or
 /// `m/84'/1'/0'` for Testnet.
 ///
 /// This template requires the parent fingerprint to populate correctly the metadata of PSBTs.
@@ -452,10 +452,10 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84<K> {
 ///     Bip84Public(key.clone(), fingerprint, KeychainKind::External),
 ///     Bip84Public(key, fingerprint, KeychainKind::Internal),
 /// )
-/// .network(Network::Testnet)
+/// .network(Network::Testnet4)
 /// .create_wallet_no_persist()?;
 ///
-/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tb1qedg9fdlf8cnnqfd5mks6uz5w4kgpk2pr6y4qc7");
+/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tltc1qedg9fdlf8cnnqfd5mks6uz5w4kgpk2prrvh7gh");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "wpkh([c55b303f/84'/1'/0']tpubDC2Qwo2TFsaNC4ju8nrUJ9mqVT3eSgdmy1yPqhgkjwmke3PRXutNGRYAUo6RCHTcVQaDR3ohNU9we59brGHuEKPvH1ags2nevW5opEE9Z5Q/0/*)#dhu402yv");
 /// # Ok::<_, Box<dyn std::error::Error>>(())
 /// ```
@@ -495,10 +495,10 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84Public<K> {
 ///     Bip86(key.clone(), KeychainKind::External),
 ///     Bip86(key, KeychainKind::Internal),
 /// )
-/// .network(Network::Testnet)
+/// .network(Network::Testnet4)
 /// .create_wallet_no_persist()?;
 ///
-/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tb1p5unlj09djx8xsjwe97269kqtxqpwpu2epeskgqjfk4lnf69v4tnqpp35qu");
+/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tltc1p5unlj09djx8xsjwe97269kqtxqpwpu2epeskgqjfk4lnf69v4tnq7zd4lr");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "tr([c55b303f/86'/1'/0']tpubDCiHofpEs47kx358bPdJmTZHmCDqQ8qw32upCSxHrSEdeeBs2T5Mq6QMB2ukeMqhNBiyhosBvJErteVhfURPGXPv3qLJPw5MVpHUewsbP2m/0/*)#dkgvr5hm");
 /// # Ok::<_, Box<dyn std::error::Error>>(())
 /// ```
@@ -519,7 +519,7 @@ impl<K: DerivableKey<Tap>> DescriptorTemplate for Bip86<K> {
 
 /// BIP86 public template. Expands to `tr(key/{0,1}/*)`
 ///
-/// This assumes that the key used has already been derived with `m/86'/0'/0'` for Mainnet or
+/// This assumes that the key used has already been derived with `m/86'/2'/0'` for Mainnet or
 /// `m/86'/1'/0'` for Testnet.
 ///
 /// This template requires the parent fingerprint to populate correctly the metadata of PSBTs.
@@ -541,10 +541,10 @@ impl<K: DerivableKey<Tap>> DescriptorTemplate for Bip86<K> {
 ///     Bip86Public(key.clone(), fingerprint, KeychainKind::External),
 ///     Bip86Public(key, fingerprint, KeychainKind::Internal),
 /// )
-/// .network(Network::Testnet)
+/// .network(Network::Testnet4)
 /// .create_wallet_no_persist()?;
 ///
-/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tb1pwjp9f2k5n0xq73ecuu0c5njvgqr3vkh7yaylmpqvsuuaafymh0msvcmh37");
+/// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tltc1pwjp9f2k5n0xq73ecuu0c5njvgqr3vkh7yaylmpqvsuuaafymh0msnm8kwp");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "tr([c55b303f/86'/1'/0']tpubDC2Qwo2TFsaNC4ju8nrUJ9mqVT3eSgdmy1yPqhgkjwmke3PRXutNGRYAUo6RCHTcVQaDR3ohNU9we59brGHuEKPvH1ags2nevW5opEE9Z5Q/0/*)#2p65srku");
 /// # Ok::<_, Box<dyn std::error::Error>>(())
 /// ```
@@ -579,8 +579,9 @@ macro_rules! expand_make_bipxx {
                 derivation_path.push(bip32::ChildNumber::from_hardened_idx(bip)?);
 
                 match network_kind {
+                    // SLIP-44: Litecoin mainnet is coin type 2'.
                     NetworkKind::Main => {
-                        derivation_path.push(bip32::ChildNumber::from_hardened_idx(0)?);
+                        derivation_path.push(bip32::ChildNumber::from_hardened_idx(2)?);
                     }
                     _ => {
                         derivation_path.push(bip32::ChildNumber::from_hardened_idx(1)?);
@@ -616,7 +617,8 @@ macro_rules! expand_make_bipxx {
                 let source_path = bip32::DerivationPath::from(vec![
                     bip32::ChildNumber::from_hardened_idx(bip)?,
                     match network_kind {
-                        NetworkKind::Main => bip32::ChildNumber::from_hardened_idx(0)?,
+                        // SLIP-44: Litecoin mainnet is coin type 2'.
+                        NetworkKind::Main => bip32::ChildNumber::from_hardened_idx(2)?,
                         _ => bip32::ChildNumber::from_hardened_idx(1)?,
                     },
                     bip32::ChildNumber::from_hardened_idx(0)?,
@@ -666,7 +668,7 @@ mod test {
             let purpose = path.first().unwrap();
             assert_matches!(purpose, Hardened { index: 44 });
             let coin_type = path.get(1).unwrap();
-            assert_matches!(coin_type, Hardened { index: 0 });
+            assert_matches!(coin_type, Hardened { index: 2 });
         }
 
         let tprvkey = bitcoin::bip32::Xpriv::from_str("tprv8ZgxMBicQKsPcx5nBGsR63Pe8KnRUqmbJNENAfGftF3yuXoMMoVJJcYeUw5eVkm9WBPjWYt6HMWYJNesB5HaNVBaFc1M6dRjWSYnmewUMYy").unwrap();
@@ -757,7 +759,7 @@ mod test {
             false,
             true,
             NetworkKind::Test,
-            &["2NB4ox5VDRw1ecUv6SnT3VQHPXveYztRqk5"],
+            &["QeRa56MTT34jkfg94tV4a6ipgK6NsjbGBY"],
         );
 
         let pubkey = bitcoin::PublicKey::from_str(
@@ -770,7 +772,7 @@ mod test {
             false,
             true,
             NetworkKind::Test,
-            &["2N5LiC3CqzxDamRTPG1kiNv1FpNJQ7x28sb"],
+            &["QYhUK45624GfucDRt7njTcSgxkkE1dadwM"],
         );
     }
 
@@ -786,7 +788,7 @@ mod test {
             false,
             true,
             NetworkKind::Test,
-            &["bcrt1q4525hmgw265tl3drrl8jjta7ayffu6jfcwxx9y"],
+            &["rltc1q4525hmgw265tl3drrl8jjta7ayffu6jfxru0j6"],
         );
 
         let pubkey = bitcoin::PublicKey::from_str(
@@ -799,7 +801,7 @@ mod test {
             false,
             true,
             NetworkKind::Test,
-            &["bcrt1qngw83fg8dz0k749cg7k3emc7v98wy0c7azaa6h"],
+            &["rltc1qngw83fg8dz0k749cg7k3emc7v98wy0c7r085df"],
         );
     }
 
@@ -815,7 +817,7 @@ mod test {
             true,
             true,
             NetworkKind::Test,
-            &["bcrt1pvjf9t34fznr53u5tqhejz4nr69luzkhlvsdsdfq9pglutrpve2xqnwtkqq"],
+            &["rltc1pvjf9t34fznr53u5tqhejz4nr69luzkhlvsdsdfq9pglutrpve2xqmdpf0d"],
         );
 
         let pubkey = bitcoin::PublicKey::from_str(
@@ -828,11 +830,11 @@ mod test {
             true,
             true,
             NetworkKind::Test,
-            &["bcrt1pw74tdcrxlzn5r8z6ku2vztr86fgq0m245s72mjktf4afwzsf8ugs4evwdf"],
+            &["rltc1pw74tdcrxlzn5r8z6ku2vztr86fgq0m245s72mjktf4afwzsf8ugsa6x3zy"],
         );
     }
 
-    // BIP44 `pkh(key/44'/0'/0'/{0,1}/*)`
+    // BIP44 `pkh(key/44'/2'/0'/{0,1}/*)`
     #[test]
     fn test_bip44_template() {
         let prvkey = bitcoin::bip32::Xpriv::from_str("tprv8ZgxMBicQKsPcx5nBGsR63Pe8KnRUqmbJNENAfGftF3yuXoMMoVJJcYeUw5eVkm9WBPjWYt6HMWYJNesB5HaNVBaFc1M6dRjWSYnmewUMYy").unwrap();
@@ -843,9 +845,9 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "n453VtnjDHPyDt2fDstKSu7A3YCJoHZ5g5",
-                "mvfrrumXgTtwFPWDNUecBBgzuMXhYM7KRP",
-                "mzYvhRAuQqbdSKMVVzXNYyqihgNdRadAUQ",
+                "mjo1T5ngGXhrgx6zQo2v8NSL1MpftjYCBt",
+                "mii6nxDVkQmseuRgtPefec4YRMSVNht8Fb",
+                "mxH7pw3LpXFfVPLk8ES2rSjoyqyR4CXrQZ",
             ],
         );
         check(
@@ -855,9 +857,9 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "muHF98X9KxEzdKrnFAX85KeHv96eXopaip",
-                "n4hpyLJE5ub6B5Bymv4eqFxS5KjrewSmYR",
-                "mgvkdv1ffmsXd2B1sRKQ5dByK3SzpG42rA",
+                "mkgTgsfw6Bt7hPWRfourYnQi4PmahRYjhJ",
+                "mgo7EJztxZbJqEXBr8i2jYJYaUfp6uJibh",
+                "mzgJHqpBxLyUAAwRnSRV6qNE5qh7UQ3yoN",
             ],
         );
     }
@@ -893,7 +895,7 @@ mod test {
         );
     }
 
-    // BIP49 `sh(wpkh(key/49'/0'/0'/{0,1}/*))`
+    // BIP49 `sh(wpkh(key/49'/2'/0'/{0,1}/*))`
     #[test]
     fn test_bip49_template() {
         let prvkey = bitcoin::bip32::Xpriv::from_str("tprv8ZgxMBicQKsPcx5nBGsR63Pe8KnRUqmbJNENAfGftF3yuXoMMoVJJcYeUw5eVkm9WBPjWYt6HMWYJNesB5HaNVBaFc1M6dRjWSYnmewUMYy").unwrap();
@@ -904,9 +906,9 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "2N9bCAJXGm168MjVwpkBdNt6ucka3PKVoUV",
-                "2NDckYkqrYyDMtttEav5hB3Bfw9EGAW5HtS",
-                "2NAFTVtksF9T4a97M7nyCjwUBD24QevZ5Z4",
+                "QTQJYyY8Etzc1uJckqrA9pFiWFLM3TNj4Z",
+                "QjgCpNsbi5qTojNwp3Rtu3WNahXLRLv6SQ",
+                "QeqL6JTpYXVaGpErc7dehNKEtLmYCd1kak",
             ],
         );
         check(
@@ -916,9 +918,9 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "2NB3pA8PnzJLGV8YEKNDFpbViZv3Bm1K6CG",
-                "2NBiX2Wzxngb5rPiWpUiJQ2uLVB4HBjFD4p",
-                "2NA8ek4CdQ6aMkveYF6AYuEYNrftB47QGTn",
+                "QRiMRhwGntzQEw2Yq2LEe1E3J4n45SBtmt",
+                "Qh5ZAtP672Y92aFjBTEbTDXvRro5c997B8",
+                "Qg3DEfy78pBccwV7fgvXgeRk4xRCsPxmT7",
             ],
         );
     }
@@ -935,9 +937,9 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "2N3K4xbVAHoiTQSwxkZjWDfKoNC27pLkYnt",
-                "2NCTQfJ1sZa3wQ3pPseYRHbaNEpC3AquEfX",
-                "2MveFxAuC8BYPzTybx7FxSzW8HSd8ATT4z7",
+                "QWfq5cMQJumYYdi1NfmXJMmEWaTwgnUaut",
+                "QfpAnJt7ag72YEaSVkaSNJ1oPCds3HTsNj",
+                "QQ125BmS9HbV8ejeaDHyXgwZRq4x1Ffo7Q",
             ],
         );
         check(
@@ -947,14 +949,14 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "2NF2vttKibwyxigxtx95Zw8K7JhDbo5zPVJ",
-                "2Mtmyd8taksxNVWCJ4wVvaiss7QPZGcAJuH",
-                "2NBs3CTVYPr1HCzjB4YFsnWCPCtNg8uMEfp",
+                "QiPh1uBxd433rsiwaF7b1pkYT5fRdLJbur",
+                "QN8jk9kpmz1TdgxLh3XwfRKJFnqP87tDn1",
+                "QfDoKUMnQx4NMBVDgeHtsCdpMGpW76pzpE",
             ],
         );
     }
 
-    // BIP84 `wpkh(key/84'/0'/0'/{0,1}/*)`
+    // BIP84 `wpkh(key/84'/2'/0'/{0,1}/*)`
     #[test]
     fn test_bip84_template() {
         let prvkey = bitcoin::bip32::Xpriv::from_str("tprv8ZgxMBicQKsPcx5nBGsR63Pe8KnRUqmbJNENAfGftF3yuXoMMoVJJcYeUw5eVkm9WBPjWYt6HMWYJNesB5HaNVBaFc1M6dRjWSYnmewUMYy").unwrap();
@@ -965,9 +967,9 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "bcrt1qkmvk2nadgplmd57ztld8nf8v2yxkzmdvwtjf8s",
-                "bcrt1qx0v6zgfwe50m4kqc58cqzcyem7ay2sfl3gvqhp",
-                "bcrt1q4h7fq9zhxst6e69p3n882nfj649l7w9g3zccfp",
+                "rltc1qm0jc96qdwgjauk9sqrnp0yagv0pakuetg6lvrp",
+                "rltc1qmxt2yxchtw3ep26kts7nak33thfqn8lurttysg",
+                "rltc1q9x4zqka4dke9ypnx8mgjf562sc728ystz289et",
             ],
         );
         check(
@@ -977,9 +979,9 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "bcrt1qtrwtz00wxl69e5xex7amy4xzlxkaefg3gfdkxa",
-                "bcrt1qqqasfhxpkkf7zrxqnkr2sfhn74dgsrc3e3ky45",
-                "bcrt1qpks7n0gq74hsgsz3phn5vuazjjq0f5eqhsgyce",
+                "rltc1qjphqc36g7zegk5r5c0c86tv3a80mnt8afcrryr",
+                "rltc1qny3mdxf0852daxa0g0v7q46h876h4tcsuy53wl",
+                "rltc1qr0xl3g39x4duyr8n4mytxwqr35hry247cpqwds",
             ],
         );
     }
@@ -996,9 +998,9 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "bcrt1qedg9fdlf8cnnqfd5mks6uz5w4kgpk2prcdvd0h",
-                "bcrt1q3lncdlwq3lgcaaeyruynjnlccr0ve0kakh6ana",
-                "bcrt1qt9800y6xl3922jy3uyl0z33jh5wfpycyhcylr9",
+                "rltc1qedg9fdlf8cnnqfd5mks6uz5w4kgpk2prxqkycf",
+                "rltc1q3lncdlwq3lgcaaeyruynjnlccr0ve0kag6q5yr",
+                "rltc1qt9800y6xl3922jy3uyl0z33jh5wfpycyf47k5m",
             ],
         );
         check(
@@ -1008,14 +1010,14 @@ mod test {
             false,
             NetworkKind::Test,
             &[
-                "bcrt1qm6wqukenh7guu792lj2njgw9n78cmwsy8xy3z2",
-                "bcrt1q694twxtjn4nnrvnyvra769j0a23rllj5c6cgwp",
-                "bcrt1qhlac3c5ranv5w5emlnqs7wxhkxt8maelylcarp",
+                "rltc1qm6wqukenh7guu792lj2njgw9n78cmwsyet7c45",
+                "rltc1q694twxtjn4nnrvnyvra769j0a23rllj5xhzpel",
+                "rltc1qhlac3c5ranv5w5emlnqs7wxhkxt8mael6jz55l",
             ],
         );
     }
 
-    // BIP86 `tr(key/86'/0'/0'/{0,1}/*)`
+    // BIP86 `tr(key/86'/2'/0'/{0,1}/*)`
     // Used addresses in test vector from https://github.com/bitcoin/bips/blob/master/bip-0086.mediawiki
     #[test]
     fn test_bip86_template() {
@@ -1027,9 +1029,9 @@ mod test {
             false,
             NetworkKind::Main,
             &[
-                "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr",
-                "bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh",
-                "bc1p0d0rhyynq0awa9m8cqrcr8f5nxqx3aw29w4ru5u9my3h0sfygnzs9khxz8",
+                "ltc1puht8rk95c53q3u9w3pf9h3jfcutcrl9lxc7rqsdthjrse4k6sn7q9tuqm9",
+                "ltc1p4m4d6s554w3lhamw6pt5je23xvzsqxnz58wc24gc8g9n328yc3xsg3antm",
+                "ltc1phmldcawq5rnvuzj54k5nkkyyqrzvu0g5xegyu0q4wnejmstg2tfsyvjas8",
             ],
         );
         check(
@@ -1039,9 +1041,9 @@ mod test {
             false,
             NetworkKind::Main,
             &[
-                "bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7",
-                "bc1ptdg60grjk9t3qqcqczp4tlyy3z47yrx9nhlrjsmw36q5a72lhdrs9f00nj",
-                "bc1pgcwgsu8naxp7xlp5p7ufzs7emtfza2las7r2e7krzjhe5qj5xz2q88kmk5",
+                "ltc1pehskafcqerg3hqvx005ywevqta7r0q980xgnencjgez0fyf7lt7s8r36hx",
+                "ltc1prpas0sz74px6juj240kpx4j7ww65ldqlu0s7s875gtsmv2m7jeasy93njw",
+                "ltc1pj80qe6zrc04pxruk3lk5ygcscyvvc4zj6nsx29xnagnpvekjuqssygxc0k",
             ],
         );
     }
@@ -1059,9 +1061,9 @@ mod test {
             false,
             NetworkKind::Main,
             &[
-                "bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr",
-                "bc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0was9fqzwh",
-                "bc1p0d0rhyynq0awa9m8cqrcr8f5nxqx3aw29w4ru5u9my3h0sfygnzs9khxz8",
+                "ltc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxq4arnzx",
+                "ltc1p4qhjn9zdvkux4e44uhx8tc55attvtyu358kutcqkudyccelu0wasxdwj5j",
+                "ltc1p0d0rhyynq0awa9m8cqrcr8f5nxqx3aw29w4ru5u9my3h0sfygnzsxjekcz",
             ],
         );
         check(
@@ -1071,9 +1073,9 @@ mod test {
             false,
             NetworkKind::Main,
             &[
-                "bc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqwruhk7",
-                "bc1ptdg60grjk9t3qqcqczp4tlyy3z47yrx9nhlrjsmw36q5a72lhdrs9f00nj",
-                "bc1pgcwgsu8naxp7xlp5p7ufzs7emtfza2las7r2e7krzjhe5qj5xz2q88kmk5",
+                "ltc1p3qkhfews2uk44qtvauqyr2ttdsw7svhkl9nkm9s9c3x4ax5h60wqd8j8vm",
+                "ltc1ptdg60grjk9t3qqcqczp4tlyy3z47yrx9nhlrjsmw36q5a72lhdrsxdplfh",
+                "ltc1pgcwgsu8naxp7xlp5p7ufzs7emtfza2las7r2e7krzjhe5qj5xz2qyrctv3",
             ],
         );
     }

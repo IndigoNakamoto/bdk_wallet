@@ -72,7 +72,7 @@ fn test_tx_replaced_event() {
     // create original tx
     let mut builder = wallet.build_tx();
     builder.add_recipient(
-        Address::from_str("tb1q6yn66vajcctph75pvylgkksgpp6nq04ppwct9a")
+        Address::from_str("tltc1q6yn66vajcctph75pvylgkksgpp6nq04pcx6445")
             .unwrap()
             .assume_checked(),
         Amount::from_sat(10_000),
@@ -123,7 +123,7 @@ fn test_tx_confirmed_event() {
     // create new tx
     let mut builder = wallet.build_tx();
     builder.add_recipient(
-        Address::from_str("tb1q6yn66vajcctph75pvylgkksgpp6nq04ppwct9a")
+        Address::from_str("tltc1q6yn66vajcctph75pvylgkksgpp6nq04pcx6445")
             .unwrap()
             .assume_checked(),
         Amount::from_sat(10_000),
@@ -183,7 +183,7 @@ fn test_tx_confirmed_new_block_event() {
     // create new tx
     let mut builder = wallet.build_tx();
     builder.add_recipient(
-        Address::from_str("tb1q6yn66vajcctph75pvylgkksgpp6nq04ppwct9a")
+        Address::from_str("tltc1q6yn66vajcctph75pvylgkksgpp6nq04pcx6445")
             .unwrap()
             .assume_checked(),
         Amount::from_sat(10_000),
@@ -274,7 +274,7 @@ fn test_tx_dropped_event() {
     // create new tx
     let mut builder = wallet.build_tx();
     builder.add_recipient(
-        Address::from_str("tb1q6yn66vajcctph75pvylgkksgpp6nq04ppwct9a")
+        Address::from_str("tltc1q6yn66vajcctph75pvylgkksgpp6nq04pcx6445")
             .unwrap()
             .assume_checked(),
         Amount::from_sat(10_000),
@@ -315,6 +315,7 @@ fn test_block(prev_blockhash: BlockHash, time: u32, txdata: Vec<Transaction>) ->
             nonce: time,
         },
         txdata,
+        mweb_block: None,
     }
 }
 

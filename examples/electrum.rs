@@ -20,7 +20,7 @@ const DB_PATH: &str = "bdk-example-electrum.sqlite";
 const NETWORK: Network = Network::Testnet4;
 const EXTERNAL_DESC: &str = "wpkh(tprv8ZgxMBicQKsPdy6LMhUtFHAgpocR8GC6QmwMSFpZs7h6Eziw3SpThFfczTDh5rW2krkqffa11UpX3XkeTTB2FvzZKWXqPY54Y6Rq4AQ5R8L/84'/1'/0'/0/*)";
 const INTERNAL_DESC: &str = "wpkh(tprv8ZgxMBicQKsPdy6LMhUtFHAgpocR8GC6QmwMSFpZs7h6Eziw3SpThFfczTDh5rW2krkqffa11UpX3XkeTTB2FvzZKWXqPY54Y6Rq4AQ5R8L/84'/1'/0'/1/*)";
-const ELECTRUM_URL: &str = "ssl://mempool.space:40002";
+const ELECTRUM_URL: &str = "ssl://electrum-ltc.bysh.me:51002";
 
 fn main() -> Result<(), anyhow::Error> {
     let mut db = Connection::open(DB_PATH)?;
@@ -96,7 +96,7 @@ fn main() -> Result<(), anyhow::Error> {
     let tx = psbt.extract_tx()?;
     client.transaction_broadcast(&tx)?;
     let txid = tx.compute_txid();
-    println!("Tx broadcasted! Txid: https://mempool.space/testnet4/tx/{txid}");
+    println!("Tx broadcasted! Txid: https://litecoinspace.org/testnet/tx/{txid}");
 
     println!("Partial Sync...");
     print!("SCANNING: ");
@@ -143,11 +143,11 @@ fn main() -> Result<(), anyhow::Error> {
         "New fee ({new_fee}) should be higher than original ({original_fee})"
     );
 
-    // wait for first transaction to make it into the mempool and be indexed on mempool.space
+    // wait for first transaction to make it into the mempool and be indexed on litecoinspace.org
     sleep(Duration::from_secs(10));
     client.transaction_broadcast(&bumped_tx)?;
     println!(
-        "Broadcasted bumped tx. Txid: https://mempool.space/testnet4/tx/{}",
+        "Broadcasted bumped tx. Txid: https://litecoinspace.org/testnet/tx/{}",
         bumped_tx.compute_txid()
     );
 
