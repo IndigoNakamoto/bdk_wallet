@@ -1411,6 +1411,9 @@ impl Wallet {
             }
         };
 
+        // Note: `mw_tx` must stay unset here. `Psbt::from_unsigned_tx` rejects MWEB/HogEx
+        // transactions (`UnsupportedMwebOrHogEx`). Attach the body after sign/extract via
+        // [`crate::wallet::tx_builder::attach_mweb_tx`] / [`TxBuilder::finish_mweb_pegin`].
         let mut tx = Transaction {
             mw_tx: None,
             is_hog_ex: false,
@@ -1428,10 +1431,10 @@ impl Wallet {
         let recipients = params.recipients.iter().map(|(r, v)| (r, *v));
 
         for (index, (script_pubkey, value)) in recipients.enumerate() {
-            // MWEB stealth addresses (`ltcmweb1…`) expose an empty script pubkey. Paying them as a
-            // transparent output is never valid.
+            // MWEB stealth addresses (`ltcmweb1…` / `tmweb1…`) expose an empty script pubkey.
+            // Peg-ins need a kernel_id from litecoind/mwebd — see `add_mweb_pegin`.
             if script_pubkey.is_empty() {
-                return Err(CreateTxError::EmptyScriptPubkey(index));
+                return Err(CreateTxError::MwebPegInRequiresKernel(index));
             }
             if !params.allow_dust && value.is_dust(script_pubkey) && !script_pubkey.is_op_return() {
                 return Err(CreateTxError::OutputBelowDustLimit(index));

@@ -12,3 +12,10 @@ examples/test_data
 
 # Coverage reports
 lcov.info
+
+# Local mainnet E2E wallet (real funds)
+mainnet-e2e-wallet/
+examples/mainnet_receive.rs
+examples/mainnet_sync.rs
+examples/mainnet_spend.rs
+examples/mainnet_sweep.rs

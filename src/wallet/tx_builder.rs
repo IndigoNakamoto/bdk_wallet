@@ -141,6 +141,9 @@ pub(crate) struct TxParams {
     pub(crate) bumping_fee: Option<PreviousFee>,
     pub(crate) current_height: Option<absolute::LockTime>,
     pub(crate) allow_dust: bool,
+    /// Pre-authored MWEB body for a peg-in (from litecoind / mwebd). Required when any
+    /// recipient is a witness-v9 peg-in script.
+    pub(crate) mweb_tx: Option<bitcoin::blockdata::mimblewimble::Transaction>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -690,6 +693,39 @@ impl<'a, Cs> TxBuilder<'a, Cs> {
         self
     }
 
+    /// Add a Litecoin MWEB peg-in output (witness v9 committing to `kernel_id`).
+    ///
+    /// The `kernel_id` and matching [`mweb_tx`] body may come from
+    /// [`bdk_mweb::build_pegin`] (Phase 5) or a Core/mwebd finalizer. See
+    /// `docs/MWEB_PEGIN.md`.
+    ///
+    /// [`mweb_tx`]: Self::mweb_tx
+    /// [`bdk_mweb::build_pegin`]: https://docs.rs/bdk_mweb
+    pub fn add_mweb_pegin(&mut self, kernel_id: [u8; 32], amount: Amount) -> &mut Self {
+        let spk = bdk_chain::mweb_pegin_script_pubkey(&kernel_id);
+        self.add_recipient(spk, amount)
+    }
+
+    /// Apply a BDK-authored peg-in body (`bdk_mweb::build_pegin`).
+    ///
+    /// Sets the v9 recipient and stores `mw_tx` for [`finish_mweb_pegin`].
+    #[cfg(feature = "mweb")]
+    pub fn apply_mweb_pegin(&mut self, pegin: &bdk_mweb::FinishedMwebPegin) -> &mut Self {
+        self.add_mweb_pegin(pegin.kernel_id, Amount::from_sat(pegin.pegin_amount));
+        self.mweb_tx(pegin.mw_tx.clone());
+        self
+    }
+
+    /// Attach a pre-authored MWEB transaction body for peg-in construction.
+    ///
+    /// BIP174 PSBTs cannot carry MWEB bodies (`UnsupportedMwebOrHogEx`). Prefer
+    /// [`finish_mweb_pegin`], which returns the body alongside the PSBT for
+    /// [`attach_mweb_tx`] after signing.
+    pub fn mweb_tx(&mut self, mw_tx: bitcoin::blockdata::mimblewimble::Transaction) -> &mut Self {
+        self.params.mweb_tx = Some(mw_tx);
+        self
+    }
+
     /// Add data as an output, using OP_RETURN
     pub fn add_data<T: AsRef<PushBytes>>(&mut self, data: &T) -> &mut Self {
         let script = ScriptBuf::new_op_return(data);
@@ -776,6 +812,48 @@ impl<Cs: CoinSelectionAlgorithm> TxBuilder<'_, Cs> {
     pub fn finish_with_aux_rand(self, rng: &mut impl RngCore) -> Result<Psbt, CreateTxError> {
         self.wallet.create_tx(self.coin_selection, self.params, rng)
     }
+
+    /// Finish a peg-in: build a transparent PSBT (witness-v9 output) and return the MWEB body
+    /// to attach after signing.
+    ///
+    /// ```ignore
+    /// let (mut psbt, mw_tx) = builder.finish_mweb_pegin()?;
+    /// wallet.sign(&mut psbt, SignOptions::default())?;
+    /// let mut tx = psbt.extract_tx()?;
+    /// attach_mweb_tx(&mut tx, mw_tx);
+    /// ```
+    #[cfg(feature = "std")]
+    pub fn finish_mweb_pegin(
+        self,
+    ) -> Result<(Psbt, bitcoin::blockdata::mimblewimble::Transaction), CreateTxError> {
+        let mw_tx = self
+            .params
+            .mweb_tx
+            .clone()
+            .ok_or(CreateTxError::MwebPegInMissingBody)?;
+        let has_pegin = self.params.recipients.iter().any(|(spk, _)| {
+            bdk_chain::is_mweb_bridge_output(spk)
+                && spk.witness_version()
+                    == Some(bitcoin::blockdata::script::witness_version::WitnessVersion::V9)
+        });
+        if !has_pegin {
+            return Err(CreateTxError::MwebPegInMissingBody);
+        }
+        let psbt = self.finish()?;
+        Ok((psbt, mw_tx))
+    }
+}
+
+/// Attach a pre-authored MWEB body after PSBT sign/extract.
+///
+/// BIP174 PSBTs cannot serialize `mw_tx`; peg-in construction keeps the body aside until the
+/// transparent transaction is extracted. The body may be authored by [`bdk_mweb::build_pegin`]
+/// or by litecoind/mwebd.
+pub fn attach_mweb_tx(
+    tx: &mut Transaction,
+    mw_tx: bitcoin::blockdata::mimblewimble::Transaction,
+) {
+    tx.mw_tx = Some(mw_tx);
 }
 
 #[derive(Debug)]

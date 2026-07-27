@@ -50,6 +50,64 @@ fn hogex_does_not_inflate_balance_or_utxos() {
     );
 }
 
+/// Peg-out vouts in a HogEx are ordinary transparent UTXOs and must credit the wallet. HogAddr
+/// (vout0, witness v8) must never credit — covered at the chain indexer when a bridge SPK is
+/// watched; here a confirmed peg-out rewrite to our SPK increases balance while the HogAddr is
+/// ignored.
+#[test]
+fn hogex_pegout_credits_wallet_but_hogaddr_does_not() {
+    use bdk_wallet::bitcoin::hashes::Hash;
+    use bdk_wallet::bitcoin::{OutPoint, TxIn, TxOut};
+    use bdk_wallet::chain::{is_mweb_bridge_output, BlockId, ConfirmationBlockTime};
+
+    let (mut wallet, _) = get_funded_wallet_wpkh();
+    let before = wallet.balance().total();
+    // Index 0 is already used by the funding fixture; reveal a fresh receive SPK.
+    let addr = wallet.peek_address(KeychainKind::External, 1).address;
+    let pegout_amount = Amount::from_sat(25_000);
+
+    let raw = Vec::from_hex(HOGEX_TX_HEX).unwrap();
+    let mut hogex: Transaction = deserialize(&raw).unwrap();
+    assert!(is_mweb_bridge_output(&hogex.output[0].script_pubkey));
+    hogex.output[1] = TxOut {
+        value: pegout_amount,
+        script_pubkey: addr.script_pubkey(),
+    };
+    hogex.input[0] = TxIn {
+        previous_output: OutPoint {
+            txid: bdk_wallet::bitcoin::Txid::from_byte_array([0xAB; 32]),
+            vout: 0,
+        },
+        ..hogex.input[0].clone()
+    };
+
+    let bridge_value = hogex.output[0].value;
+    let txid = hogex.compute_txid();
+    let tip = wallet.latest_checkpoint().block_id();
+    let anchor = ConfirmationBlockTime {
+        block_id: BlockId {
+            height: tip.height,
+            hash: tip.hash,
+        },
+        confirmation_time: 300,
+    };
+    let mut tx_update = TxUpdate::default();
+    tx_update.txs.push(Arc::new(hogex));
+    tx_update.anchors = [(anchor, txid)].into();
+    wallet
+        .apply_update(Update {
+            tx_update,
+            ..Default::default()
+        })
+        .unwrap();
+
+    assert_eq!(
+        wallet.balance().total(),
+        before + pegout_amount,
+        "only the peg-out should credit; HogAddr value {bridge_value} must be ignored"
+    );
+}
+
 #[test]
 fn sending_to_mweb_address_is_rejected() {
     let (mut wallet, _) = get_funded_wallet_wpkh();
@@ -73,8 +131,23 @@ fn sending_to_mweb_address_is_rejected() {
     builder.add_recipient(mweb.script_pubkey(), Amount::from_sat(10_000));
     let err = builder.finish().expect_err("MWEB destination must fail");
     assert!(
-        matches!(err, CreateTxError::EmptyScriptPubkey(0)),
-        "expected EmptyScriptPubkey, got {err:?}"
+        matches!(err, CreateTxError::MwebPegInRequiresKernel(0)),
+        "expected MwebPegInRequiresKernel, got {err:?}"
+    );
+}
+
+#[test]
+fn add_mweb_pegin_requires_mweb_body() {
+    let (mut wallet, _) = get_funded_wallet_wpkh();
+    let kernel = [0x11u8; 32];
+    let mut builder = wallet.build_tx();
+    builder.add_mweb_pegin(kernel, Amount::from_sat(10_000));
+    let err = builder
+        .finish_mweb_pegin()
+        .expect_err("peg-in without mw_tx must fail");
+    assert!(
+        matches!(err, CreateTxError::MwebPegInMissingBody),
+        "expected MwebPegInMissingBody, got {err:?}"
     );
 }
 

@@ -25,6 +25,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 [dependencies]
 # Nested clone uses path deps against the sibling Litecoin BDK crates.
 bdk_chain = { path = "../crates/chain", version = "0.23.2", features = ["miniscript", "serde"], default-features = false }
+bdk_mweb = { path = "../crates/mweb", version = "0.1.0", optional = true, default-features = false, features = ["std", "zkp"] }
 bitcoin = { package = "litecoin", version = "0.32.8-rc.1", features = ["serde", "base64"], default-features = false }
 miniscript = { git = "https://github.com/IndigoNakamoto/rust-miniscript", rev = "e3187272617adad69f5b9ece62d25ea28b70fd25", features = ["serde"], default-features = false }
 rand_core = { version = "0.6.4" }
@@ -46,13 +47,16 @@ keys-bip39 = ["bip39"]
 rusqlite = ["bdk_chain/rusqlite"]
 file_store = ["bdk_file_store"]
 test-utils = ["std", "anyhow", "tempfile"]
+# Wire `bdk_mweb::FinishedMwebPegin` into TxBuilder peg-in helpers.
+mweb = ["dep:bdk_mweb"]
 
 [dev-dependencies]
 anyhow = "1"
 assert_matches = "1.5.0"
 bdk_electrum = { path = "../crates/electrum", version = "0.23.2" }
 bdk_esplora = { path = "../crates/esplora", version = "0.22.1", features = ["async-https", "blocking-https", "tokio"] }
-bdk_wallet = { path = ".", features = ["rusqlite", "file_store", "test-utils"] }
+bdk_testenv = { path = "../crates/testenv", features = ["litecoin-daemon"] }
+bdk_wallet = { path = ".", features = ["rusqlite", "file_store", "test-utils", "mweb"] }
 clap = { version = "4.5.60", features = ["derive", "env"] }
 ctrlc = "3.5.2"
 rand = "0.8"

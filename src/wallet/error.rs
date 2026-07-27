@@ -197,6 +197,18 @@ pub enum CreateTxError {
     /// Output script pubkey is empty (for example an MWEB stealth address, which has no
     /// transparent script). Transparent wallets cannot pay such destinations.
     EmptyScriptPubkey(usize),
+    /// Destination is an MWEB stealth address (empty script pubkey). A peg-in requires a
+    /// `kernel_id` from litecoind/mwebd — use [`TxBuilder::add_mweb_pegin`] after a finalizer
+    /// supplies one (see `docs/MWEB_PEGIN.md`).
+    ///
+    /// [`TxBuilder::add_mweb_pegin`]: crate::wallet::tx_builder::TxBuilder::add_mweb_pegin
+    MwebPegInRequiresKernel(usize),
+    /// Peg-in outputs (witness v9) are present but no MWEB transaction body was attached.
+    /// Call [`TxBuilder::mweb_tx`] with the body from litecoind/mwebd before [`TxBuilder::finish`].
+    ///
+    /// [`TxBuilder::mweb_tx`]: crate::wallet::tx_builder::TxBuilder::mweb_tx
+    /// [`TxBuilder::finish`]: crate::wallet::tx_builder::TxBuilder::finish
+    MwebPegInMissingBody,
     /// There was an error with coin selection
     CoinSelection(coin_selection::InsufficientFunds),
     /// Cannot build a tx without recipients
@@ -268,6 +280,18 @@ impl fmt::Display for CreateTxError {
                 write!(
                     f,
                     "Output {index} has an empty script pubkey (not a transparent destination)"
+                )
+            }
+            CreateTxError::MwebPegInRequiresKernel(index) => {
+                write!(
+                    f,
+                    "Output {index} is an MWEB stealth address; peg-in needs a kernel_id from litecoind/mwebd (add_mweb_pegin)"
+                )
+            }
+            CreateTxError::MwebPegInMissingBody => {
+                write!(
+                    f,
+                    "MWEB peg-in output(s) present but no mw_tx body attached (call mweb_tx first)"
                 )
             }
             CreateTxError::CoinSelection(e) => e.fmt(f),
