@@ -47,7 +47,7 @@ keys-bip39 = ["bip39"]
 rusqlite = ["bdk_chain/rusqlite"]
 file_store = ["bdk_file_store"]
 test-utils = ["std", "anyhow", "tempfile"]
-# Wire `bdk_mweb::FinishedMwebPegin` into TxBuilder peg-in helpers.
+# MWEB facade: CombinedBalance, prepare_mweb_pegin / build_mweb_send / pegout.
 mweb = ["dep:bdk_mweb"]
 
 [dev-dependencies]

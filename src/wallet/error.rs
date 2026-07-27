@@ -209,6 +209,17 @@ pub enum CreateTxError {
     /// [`TxBuilder::mweb_tx`]: crate::wallet::tx_builder::TxBuilder::mweb_tx
     /// [`TxBuilder::finish`]: crate::wallet::tx_builder::TxBuilder::finish
     MwebPegInMissingBody,
+    /// No unspent MWEB coins available for spend/peg-out selection.
+    #[cfg(feature = "mweb")]
+    NoMwebCoins,
+    /// MWEB inputs cannot cover the requested amount plus fee.
+    #[cfg(feature = "mweb")]
+    InsufficientMwebFunds {
+        /// Amount required (recipients / peg-out + fee).
+        needed: Amount,
+        /// Sum of unspent MWEB coins considered.
+        available: Amount,
+    },
     /// There was an error with coin selection
     CoinSelection(coin_selection::InsufficientFunds),
     /// Cannot build a tx without recipients
@@ -292,6 +303,15 @@ impl fmt::Display for CreateTxError {
                 write!(
                     f,
                     "MWEB peg-in output(s) present but no mw_tx body attached (call mweb_tx first)"
+                )
+            }
+            #[cfg(feature = "mweb")]
+            CreateTxError::NoMwebCoins => write!(f, "no unspent MWEB coins"),
+            #[cfg(feature = "mweb")]
+            CreateTxError::InsufficientMwebFunds { needed, available } => {
+                write!(
+                    f,
+                    "insufficient MWEB funds: needed {needed}, available {available}"
                 )
             }
             CreateTxError::CoinSelection(e) => e.fmt(f),

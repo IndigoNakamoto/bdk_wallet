@@ -56,6 +56,8 @@ mod event;
 pub mod export;
 pub mod locked_outpoints;
 pub mod migration;
+#[cfg(feature = "mweb")]
+pub mod mweb;
 mod params;
 mod persisted;
 pub mod signer;
@@ -83,6 +85,10 @@ pub use bdk_chain::Balance;
 pub use changeset::ChangeSet;
 pub use error::{LoadError, LoadMismatch};
 pub use event::*;
+#[cfg(feature = "mweb")]
+pub use mweb::{
+    network_kind, select_mweb_coins, CombinedBalance, MwebFacadeError, PreparedMwebPegin,
+};
 pub use params::*;
 pub use persisted::*;
 pub use utils::IsDust;
@@ -1123,6 +1129,9 @@ impl Wallet {
             /* min_confirmations: */ 1,
         )
     }
+
+    // Phase 6 MWEB facade methods (`balance_combined`, `prepare_mweb_pegin`,
+    // `build_mweb_send`, `build_mweb_pegout`) live in [`mweb`] when feature `mweb` is enabled.
 
     /// Whether the transaction of `txid` is trusted by this wallet.
     ///
