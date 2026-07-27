@@ -30,6 +30,8 @@ fn fixture_coin(amount: u64) -> MwebCoin {
         shared_secret: [4; 32],
         spend_key: Some([5; 32]),
         block_height: None,
+        is_pegin: false,
+        leaf_index: None,
     }
 }
 
@@ -171,11 +173,17 @@ fn wallet_facade_pegin_pegout_roundtrip() {
     }
 
     let mut db = MwebCoinDatabase::new();
+    // Tag at peg-in inclusion height (MWEB activation), not tip — maturity gates spend.
+    const PEGIN_HEIGHT: u32 = 432; // FIRST_MWEB_HEIGHT on regtest
     let found =
-        scan_litecoin_tx_at(&keys, &book, &tx, &mut db, &secp, Some(tip)).expect("scan");
+        scan_litecoin_tx_at(&keys, &book, &tx, &mut db, &secp, Some(PEGIN_HEIGHT)).expect("scan");
     let receive_amt = pegin_amount.to_sat() - mweb_fee.to_sat();
     assert_eq!(db.balance(), receive_amt);
     assert!(found.iter().any(|c| c.address_index == 2 && c.amount == receive_amt));
+    assert!(
+        db.unspent().any(|c| c.is_pegin && c.is_spendable(tip, MWEB_PEGIN_MATURITY)),
+        "pegin should be mature at tip={tip}"
+    );
 
     let combined = wallet.balance_combined(&db);
     assert_eq!(combined.mweb_confirmed, Amount::from_sat(receive_amt));

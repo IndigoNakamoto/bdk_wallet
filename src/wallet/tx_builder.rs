@@ -847,13 +847,31 @@ impl<Cs: CoinSelectionAlgorithm> TxBuilder<'_, Cs> {
 /// Attach a pre-authored MWEB body after PSBT sign/extract.
 ///
 /// BIP174 PSBTs cannot serialize `mw_tx`; peg-in construction keeps the body aside until the
-/// transparent transaction is extracted. The body may be authored by [`bdk_mweb::build_pegin`]
-/// or by litecoind/mwebd.
+/// transparent transaction is extracted. Prefer [`bdk_mweb::MwebPsbt::extract_tx_with_mweb`] when
+/// the PSBT was populated via [`bdk_mweb::MwebPsbt`] (ltcsuite `0x90+` maps). This helper remains
+/// for interim CLI / tests until full PSBTv2 lands in the `litecoin` crate.
 pub fn attach_mweb_tx(
     tx: &mut Transaction,
     mw_tx: bitcoin::blockdata::mimblewimble::Transaction,
 ) {
     tx.mw_tx = Some(mw_tx);
+}
+
+/// Extract a network tx from a finished MWEB spend using [`bdk_mweb::MwebPsbt`] (no separate attach).
+#[cfg(feature = "mweb")]
+pub fn extract_finished_mweb_tx(
+    finished: &bdk_mweb::FinishedMwebTx,
+) -> Result<Transaction, bdk_mweb::Error> {
+    bdk_mweb::MwebPsbt::from_finished_mweb_tx(finished)?.extract_tx_with_mweb()
+}
+
+/// Finalize a signed peg-in PSBT with an authored MWEB body via [`bdk_mweb::MwebPsbt`].
+#[cfg(feature = "mweb")]
+pub fn extract_pegin_with_mweb_psbt(
+    psbt: bitcoin::psbt::Psbt,
+    pegin: &bdk_mweb::FinishedMwebPegin,
+) -> Result<Transaction, bdk_mweb::Error> {
+    bdk_mweb::MwebPsbt::from_pegin_psbt(psbt, pegin)?.extract_tx_with_mweb()
 }
 
 #[derive(Debug)]

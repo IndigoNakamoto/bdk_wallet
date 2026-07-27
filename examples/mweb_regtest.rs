@@ -28,7 +28,7 @@ use bdk_wallet::test_utils::get_test_wpkh_and_change_desc;
 use bdk_wallet::{attach_mweb_tx, KeychainKind, MwebStore, SignOptions, Wallet};
 
 const SEED_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
-const MWEB_MAGIC: &[u8] = b"bdk_mweb_v1";
+const MWEB_MAGIC: &[u8] = b"bdk_mweb_v2";
 const FUND_CONFIRM_HEIGHT: u32 = 431;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

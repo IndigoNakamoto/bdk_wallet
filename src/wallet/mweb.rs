@@ -172,6 +172,61 @@ impl MwebStore {
             verify,
         )
     }
+
+    /// mwebsync-shaped differential sync (leafset diff + UTXO dating).
+    pub fn sync_differential<P, N, S>(
+        &mut self,
+        syncer: &bdk_mweb::mweb_sync::MwebSyncer,
+        headers: &P,
+        notifier: &mut N,
+        source: &mut S,
+        state: &mut bdk_mweb::mweb_sync::SyncState,
+        keys: &MasterKeys,
+        book: &bdk_mweb::AddressBook,
+        secp: &Secp256k1<All>,
+    ) -> Result<bdk_mweb::lip0006::SyncResult, bdk_mweb::Error>
+    where
+        P: bdk_mweb::mweb_sync::BlockHeaderProvider,
+        N: bdk_mweb::mweb_sync::SyncNotifier,
+        S: bdk_mweb::lip0006::MwebUtxoSource,
+    {
+        self.sync_differential_checkpointed(
+            syncer, headers, notifier, source, state, keys, book, secp, None,
+        )
+    }
+
+    /// [`Self::sync_differential`] with an optional mid-download checkpoint callback.
+    pub fn sync_differential_checkpointed<P, N, S>(
+        &mut self,
+        syncer: &bdk_mweb::mweb_sync::MwebSyncer,
+        headers: &P,
+        notifier: &mut N,
+        source: &mut S,
+        state: &mut bdk_mweb::mweb_sync::SyncState,
+        keys: &MasterKeys,
+        book: &bdk_mweb::AddressBook,
+        secp: &Secp256k1<All>,
+        checkpoint: Option<
+            &mut dyn FnMut(&bdk_mweb::mweb_sync::SyncState, &mut MwebCoinDatabase),
+        >,
+    ) -> Result<bdk_mweb::lip0006::SyncResult, bdk_mweb::Error>
+    where
+        P: bdk_mweb::mweb_sync::BlockHeaderProvider,
+        N: bdk_mweb::mweb_sync::SyncNotifier,
+        S: bdk_mweb::lip0006::MwebUtxoSource,
+    {
+        syncer.run_once(
+            headers,
+            notifier,
+            source,
+            state,
+            keys,
+            book,
+            &mut self.db,
+            secp,
+            checkpoint,
+        )
+    }
 }
 
 /// Result of [`Wallet::prepare_mweb_pegin`].
@@ -483,6 +538,7 @@ mod tests {
             spend_key: Some([1; 32]),
             block_height: Some(1),
             is_pegin: false,
+            leaf_index: None,
         }
     }
 
