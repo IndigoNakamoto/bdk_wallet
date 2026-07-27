@@ -4,7 +4,9 @@
 
 use bdk_mweb::keys::{MasterKeyScheme, MasterKeys};
 use bdk_mweb::tx_builder::CHANGE_ADDRESS_INDEX;
-use bdk_mweb::{scan_litecoin_tx, AddressBook, MwebCoin, MwebCoinDatabase, DEFAULT_GAP_LIMIT};
+use bdk_mweb::{
+    scan_litecoin_tx_at, AddressBook, MwebCoin, MwebCoinDatabase, DEFAULT_GAP_LIMIT,
+};
 use bdk_testenv::{try_node_from_env, MWEB_PEGIN_MATURITY};
 use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
@@ -27,6 +29,7 @@ fn fixture_coin(amount: u64) -> MwebCoin {
         blind: [3; 32],
         shared_secret: [4; 32],
         spend_key: Some([5; 32]),
+        block_height: None,
     }
 }
 
@@ -34,12 +37,14 @@ fn fixture_coin(amount: u64) -> MwebCoin {
 fn balance_combined_sums_transparent_and_mweb() {
     let (wallet, _) = get_funded_wallet_wpkh();
     let transparent = wallet.balance();
+    let tip = wallet.latest_checkpoint().height();
     let mut db = MwebCoinDatabase::new();
-    db.insert(fixture_coin(12_345));
+    db.insert(fixture_coin(12_345).with_block_height(tip));
 
     let combined = wallet.balance_combined(&db);
     assert_eq!(combined.transparent, transparent);
-    assert_eq!(combined.mweb, Amount::from_sat(12_345));
+    assert_eq!(combined.mweb_confirmed, Amount::from_sat(12_345));
+    assert_eq!(combined.mweb_untrusted_pending, Amount::ZERO);
     assert_eq!(
         combined.total(),
         transparent.total() + Amount::from_sat(12_345)
@@ -166,13 +171,15 @@ fn wallet_facade_pegin_pegout_roundtrip() {
     }
 
     let mut db = MwebCoinDatabase::new();
-    let found = scan_litecoin_tx(&keys, &book, &tx, &mut db, &secp).expect("scan");
+    let found =
+        scan_litecoin_tx_at(&keys, &book, &tx, &mut db, &secp, Some(tip)).expect("scan");
     let receive_amt = pegin_amount.to_sat() - mweb_fee.to_sat();
     assert_eq!(db.balance(), receive_amt);
     assert!(found.iter().any(|c| c.address_index == 2 && c.amount == receive_amt));
 
     let combined = wallet.balance_combined(&db);
-    assert_eq!(combined.mweb, Amount::from_sat(receive_amt));
+    assert_eq!(combined.mweb_confirmed, Amount::from_sat(receive_amt));
+    assert_eq!(combined.mweb_untrusted_pending, Amount::ZERO);
     assert!(combined.total() > combined.transparent.total());
 
     let pegout_addr = env.rpc.get_new_address().expect("pegout addr");

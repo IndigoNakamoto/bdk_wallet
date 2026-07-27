@@ -28,6 +28,12 @@
 
 The `bdk_wallet` project provides a high level descriptor based wallet API for building Bitcoin applications.
 
+> **Litecoin fork:** This `litecoin` branch aliases `bitcoin` → [`litecoin`](https://crates.io/crates/litecoin).
+> Transparent sync uses Electrum/Esplora against Litecoin networks. MWEB support is behind feature
+> `mweb` (`CombinedBalance`, `MwebStore`, peg-in/out helpers) with parallel coin persistence —
+> see the sibling BDK repo [`docs/MWEB_ARCHITECTURE.md`](../docs/MWEB_ARCHITECTURE.md) and
+> `examples/mweb_regtest.rs`.
+
 ## Architecture
 
 [`bdk_wallet`] contains the central high level [`Wallet`] type that is built from the other low-level components.

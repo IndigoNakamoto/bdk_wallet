@@ -25,7 +25,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 [dependencies]
 # Nested clone uses path deps against the sibling Litecoin BDK crates.
 bdk_chain = { path = "../crates/chain", version = "0.23.2", features = ["miniscript", "serde"], default-features = false }
-bdk_mweb = { path = "../crates/mweb", version = "0.1.0", optional = true, default-features = false, features = ["std", "zkp"] }
+bdk_mweb = { path = "../crates/mweb", version = "0.1.0", optional = true, default-features = false, features = ["std", "zkp", "persist", "encrypt"] }
 bitcoin = { package = "litecoin", version = "0.32.8-rc.1", features = ["serde", "base64"], default-features = false }
 miniscript = { git = "https://github.com/IndigoNakamoto/rust-miniscript", rev = "e3187272617adad69f5b9ece62d25ea28b70fd25", features = ["serde"], default-features = false }
 rand_core = { version = "0.6.4" }
@@ -47,8 +47,10 @@ keys-bip39 = ["bip39"]
 rusqlite = ["bdk_chain/rusqlite"]
 file_store = ["bdk_file_store"]
 test-utils = ["std", "anyhow", "tempfile"]
-# MWEB facade: CombinedBalance, prepare_mweb_pegin / build_mweb_send / pegout.
+# MWEB facade: CombinedBalance, MwebStore, prepare_mweb_pegin / build_mweb_send / pegout.
 mweb = ["dep:bdk_mweb"]
+# Parallel MWEB SQLite store (beside wallet rusqlite).
+mweb-sqlite = ["mweb", "bdk_mweb/rusqlite", "rusqlite"]
 
 [dev-dependencies]
 anyhow = "1"
@@ -81,3 +83,7 @@ name = "esplora_async"
 
 [[example]]
 name = "esplora_blocking"
+
+[[example]]
+name = "mweb_regtest"
+required-features = ["mweb", "file_store", "test-utils"]

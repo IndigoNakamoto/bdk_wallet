@@ -87,7 +87,8 @@ pub use error::{LoadError, LoadMismatch};
 pub use event::*;
 #[cfg(feature = "mweb")]
 pub use mweb::{
-    network_kind, select_mweb_coins, CombinedBalance, MwebFacadeError, PreparedMwebPegin,
+    network_kind, select_mweb_coins, CombinedBalance, MwebFacadeError, MwebStore,
+    PreparedMwebPegin,
 };
 pub use params::*;
 pub use persisted::*;

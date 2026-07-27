@@ -1,7 +1,8 @@
-//! Phase 6 minimal MWEB facade: combined balance and high-level send helpers.
+//! Phase 6+ MWEB facade: combined balance, send helpers, and parallel [`MwebStore`].
 //!
-//! Callers still own [`bdk_mweb::MwebCoinDatabase`]. MWEB coins never enter
-//! transparent [`IndexedTxGraph`](bdk_chain::IndexedTxGraph).
+//! Callers may still own a bare [`bdk_mweb::MwebCoinDatabase`]. Prefer [`MwebStore`]
+//! for load/persist beside the wallet. MWEB coins never enter transparent
+//! [`IndexedTxGraph`](bdk_chain::IndexedTxGraph).
 
 use alloc::vec::Vec;
 use core::fmt;
@@ -10,7 +11,7 @@ use bdk_mweb::keys::MasterKeys;
 use bdk_mweb::tx_builder::{
     build_pegin, FinishedMwebPegin, FinishedMwebTx, MwebTxBuilder, CHANGE_ADDRESS_INDEX,
 };
-use bdk_mweb::{MwebCoin, MwebCoinDatabase};
+use bdk_mweb::{MwebBalance, MwebCoin, MwebCoinDatabase};
 use bitcoin::key::Secp256k1;
 use bitcoin::psbt::Psbt;
 use bitcoin::secp256k1::All;
@@ -19,28 +20,125 @@ use bitcoin::{Address, Amount, Network, NetworkKind, ScriptBuf};
 use crate::wallet::error::CreateTxError;
 use crate::wallet::{Balance, Wallet};
 
-/// Transparent [`Balance`] plus unspent MWEB value from a caller-owned database.
-///
-/// MWEB amounts have no confirmation buckets yet: once a coin is in
-/// [`MwebCoinDatabase`] it is treated as spendable (`trusted_spendable` includes
-/// the full `mweb` amount). Callers should only insert after maturity/scan.
+/// Transparent [`Balance`] plus bucketed MWEB value from a caller-owned database.
 #[derive(Debug, Clone, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize)]
 pub struct CombinedBalance {
     /// Existing transparent wallet balance.
     pub transparent: Balance,
-    /// Sum of unspent MWEB coins in the provided database.
-    pub mweb: Amount,
+    /// Confirmed MWEB unspent (1+ confirmation at the tip used for bucketing).
+    pub mweb_confirmed: Amount,
+    /// Unconfirmed / unknown-height MWEB unspent.
+    pub mweb_untrusted_pending: Amount,
 }
 
 impl CombinedBalance {
-    /// Transparent total plus MWEB unspent.
-    pub fn total(&self) -> Amount {
-        self.transparent.total() + self.mweb
+    /// Sum of confirmed + pending MWEB.
+    pub fn mweb_total(&self) -> Amount {
+        self.mweb_confirmed + self.mweb_untrusted_pending
     }
 
-    /// Transparent trusted-spendable plus full MWEB unspent.
+    /// Transparent total plus all MWEB unspent.
+    pub fn total(&self) -> Amount {
+        self.transparent.total() + self.mweb_total()
+    }
+
+    /// Transparent trusted-spendable plus confirmed MWEB only.
     pub fn trusted_spendable(&self) -> Amount {
-        self.transparent.trusted_spendable() + self.mweb
+        self.transparent.trusted_spendable() + self.mweb_confirmed
+    }
+}
+
+/// Parallel MWEB coin store owned beside a [`Wallet`] (not part of `Wallet::ChangeSet`).
+#[derive(Debug, Default, Clone)]
+pub struct MwebStore {
+    db: MwebCoinDatabase,
+}
+
+impl MwebStore {
+    /// Empty in-memory store.
+    pub fn new() -> Self {
+        Self {
+            db: MwebCoinDatabase::new(),
+        }
+    }
+
+    /// Wrap an existing database.
+    pub fn from_db(db: MwebCoinDatabase) -> Self {
+        Self { db }
+    }
+
+    /// Shared access to the coin database.
+    pub fn db(&self) -> &MwebCoinDatabase {
+        &self.db
+    }
+
+    /// Mutable access to the coin database.
+    pub fn db_mut(&mut self) -> &mut MwebCoinDatabase {
+        &mut self.db
+    }
+
+    /// Consume the store, returning the database.
+    pub fn into_db(self) -> MwebCoinDatabase {
+        self.db
+    }
+
+    /// Load from an aggregated `bdk_mweb` changeset (e.g. file_store dump).
+    pub fn from_changeset(cs: bdk_mweb::ChangeSet) -> Self {
+        Self {
+            db: MwebCoinDatabase::from_changeset(cs),
+        }
+    }
+
+    /// Take staged mutations for persistence.
+    pub fn take_staged(&mut self) -> bdk_mweb::ChangeSet {
+        self.db.take_staged()
+    }
+
+    /// Append staged mutations to a `bdk_file_store::Store` and clear the stage.
+    #[cfg(feature = "file_store")]
+    pub fn persist_file_store(
+        &mut self,
+        store: &mut bdk_file_store::Store<bdk_mweb::ChangeSet>,
+    ) -> Result<(), std::io::Error> {
+        let staged = self.db.take_staged();
+        store.append(&staged)?;
+        Ok(())
+    }
+
+    /// Load from a file_store path (creates if missing).
+    #[cfg(feature = "file_store")]
+    pub fn load_file_store(
+        magic: &[u8],
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<
+        (Self, bdk_file_store::Store<bdk_mweb::ChangeSet>),
+        bdk_file_store::StoreErrorWithDump<bdk_mweb::ChangeSet>,
+    > {
+        let (store, aggregated) = bdk_file_store::Store::load_or_create(magic, path.as_ref())?;
+        let db = aggregated
+            .map(MwebCoinDatabase::from_changeset)
+            .unwrap_or_else(MwebCoinDatabase::new);
+        Ok((Self { db }, store))
+    }
+
+    /// Persist staged mutations into a SQLite transaction.
+    #[cfg(feature = "mweb-sqlite")]
+    pub fn persist_sqlite(
+        &mut self,
+        db_tx: &bdk_chain::rusqlite::Transaction<'_>,
+    ) -> bdk_chain::rusqlite::Result<()> {
+        let staged = self.db.take_staged();
+        bdk_mweb::ChangeSet::persist_to_sqlite(&staged, db_tx)
+    }
+
+    /// Load from SQLite (initializes tables).
+    #[cfg(feature = "mweb-sqlite")]
+    pub fn load_sqlite(
+        db_tx: &bdk_chain::rusqlite::Transaction<'_>,
+    ) -> bdk_chain::rusqlite::Result<Self> {
+        bdk_mweb::ChangeSet::init_sqlite_tables(db_tx)?;
+        let cs = bdk_mweb::ChangeSet::from_sqlite(db_tx)?;
+        Ok(Self::from_changeset(cs))
     }
 }
 
@@ -159,14 +257,24 @@ pub fn select_mweb_coins(unspent: &[MwebCoin], needed: u64) -> Result<Vec<MwebCo
 }
 
 impl Wallet {
-    /// Transparent balance plus unspent MWEB from a caller-owned database.
-    ///
-    /// Does not change [`Wallet::balance`] semantics.
+    /// Transparent balance plus MWEB buckets at the wallet tip height.
     pub fn balance_combined(&self, mweb: &MwebCoinDatabase) -> CombinedBalance {
+        self.balance_combined_at(mweb, self.latest_checkpoint().height())
+    }
+
+    /// Transparent balance plus MWEB buckets at `tip_height`.
+    pub fn balance_combined_at(&self, mweb: &MwebCoinDatabase, tip_height: u32) -> CombinedBalance {
+        let buckets: MwebBalance = mweb.balance_at(tip_height);
         CombinedBalance {
             transparent: self.balance(),
-            mweb: Amount::from_sat(mweb.balance()),
+            mweb_confirmed: Amount::from_sat(buckets.confirmed),
+            mweb_untrusted_pending: Amount::from_sat(buckets.untrusted_pending),
         }
+    }
+
+    /// [`balance_combined`] using an [`MwebStore`].
+    pub fn balance_combined_store(&self, store: &MwebStore) -> CombinedBalance {
+        self.balance_combined(store.db())
     }
 
     /// Author a peg-in body and assemble the transparent v9 PSBT half.
@@ -197,7 +305,7 @@ impl Wallet {
         Ok(PreparedMwebPegin { psbt, mw_tx, pegin })
     }
 
-    /// Build an MWEB→MWEB spend from coins in `db`.
+    /// Build an MWEB→MWEB spend from **confirmed** coins in `db` at the wallet tip.
     pub fn build_mweb_send(
         &self,
         db: &MwebCoinDatabase,
@@ -208,8 +316,39 @@ impl Wallet {
         change_index: u32,
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
+        self.build_mweb_send_with(
+            db,
+            keys,
+            recipient,
+            amount,
+            fee,
+            change_index,
+            false,
+            secp,
+        )
+    }
+
+    /// Build an MWEB→MWEB spend; set `include_unconfirmed` to also spend pending coins.
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_mweb_send_with(
+        &self,
+        db: &MwebCoinDatabase,
+        keys: &MasterKeys,
+        recipient: Address,
+        amount: Amount,
+        fee: Amount,
+        change_index: u32,
+        include_unconfirmed: bool,
+        secp: &Secp256k1<All>,
+    ) -> Result<FinishedMwebTx, MwebFacadeError> {
+        let tip = self.latest_checkpoint().height();
+        let pool = if include_unconfirmed {
+            db.unspent_vec()
+        } else {
+            db.unspent_confirmed(tip)
+        };
         let needed = amount.to_sat().saturating_add(fee.to_sat());
-        let selected = select_mweb_coins(&db.unspent_vec(), needed)?;
+        let selected = select_mweb_coins(&pool, needed)?;
         let mut builder = MwebTxBuilder::new();
         for coin in selected {
             builder = builder.add_input(coin);
@@ -220,7 +359,7 @@ impl Wallet {
         Ok(builder.finish(keys, change_index, network_kind(self.network()), secp)?)
     }
 
-    /// Build a peg-out from coins in `db` to a transparent `script_pubkey`.
+    /// Build a peg-out from **confirmed** coins in `db` to a transparent `script_pubkey`.
     pub fn build_mweb_pegout(
         &self,
         db: &MwebCoinDatabase,
@@ -231,8 +370,39 @@ impl Wallet {
         change_index: u32,
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
+        self.build_mweb_pegout_with(
+            db,
+            keys,
+            script_pubkey,
+            amount,
+            fee,
+            change_index,
+            false,
+            secp,
+        )
+    }
+
+    /// Peg-out helper; set `include_unconfirmed` to also spend pending coins.
+    #[allow(clippy::too_many_arguments)]
+    pub fn build_mweb_pegout_with(
+        &self,
+        db: &MwebCoinDatabase,
+        keys: &MasterKeys,
+        script_pubkey: ScriptBuf,
+        amount: Amount,
+        fee: Amount,
+        change_index: u32,
+        include_unconfirmed: bool,
+        secp: &Secp256k1<All>,
+    ) -> Result<FinishedMwebTx, MwebFacadeError> {
+        let tip = self.latest_checkpoint().height();
+        let pool = if include_unconfirmed {
+            db.unspent_vec()
+        } else {
+            db.unspent_confirmed(tip)
+        };
         let needed = amount.to_sat().saturating_add(fee.to_sat());
-        let selected = select_mweb_coins(&db.unspent_vec(), needed)?;
+        let selected = select_mweb_coins(&pool, needed)?;
         let mut builder = MwebTxBuilder::new();
         for coin in selected {
             builder = builder.add_input(coin);
@@ -278,6 +448,7 @@ mod tests {
             blind: [0; 32],
             shared_secret: [0; 32],
             spend_key: Some([1; 32]),
+            block_height: Some(1),
         }
     }
 
