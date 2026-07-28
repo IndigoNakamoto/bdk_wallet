@@ -13,10 +13,11 @@
 //! ```
 //!
 //! Env:
-//! - `LITECOIN_P2P` — litecoind P2P for LIP-0006 sync (default `127.0.0.1:9333`)
-//! - `LITECOIN_RPC_URL` — optional JSON-RPC base (e.g. `http://127.0.0.1:9332`) for
-//!   `sendrawtransaction` when Esplora rejects MWEB-only txs
+//! - `LITECOIN_P2P` — litecoind P2P for LIP-0006 sync (default `127.0.0.1:9333`; comma-separated)
+//! - `LITECOIN_RPC_URL` — preferred for MWEB-only `sendrawtransaction` (print **wtxid**)
 //! - `LITECOIN_RPC_USER` / `LITECOIN_RPC_PASS` or cookie via URL userinfo
+//! - `MWEB_FINE_SYNC` — `tip` | `fast` (500) | `1`/`full` (4000); default tip-only on first sync
+//! - `MWEB_TIP_POLL_SECS` — poll interval for `sync --follow` (default 30)
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -24,13 +25,14 @@ use std::io::Write;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::time::Duration;
 
 use anyhow::{bail, Context};
 use bdk_esplora::{esplora_client, EsploraExt};
 use bdk_mweb::keys::{MasterKeyScheme, MasterKeys};
 use bdk_mweb::mweb_sync::{
-    connect_first_peer, fine_sample_heights, DatingMode, FixedHeaderProvider, MwebSyncer,
-    ReadyNotifier, SyncState, FINE_WINDOW,
+    fine_sample_heights, DatingMode, FixedHeaderProvider, MwebSyncer, PeerPool, PollingTipNotifier,
+    ReadyNotifier, SyncNotifier, SyncState, FINE_WINDOW, FINE_WINDOW_FAST,
 };
 use bdk_mweb::tx_builder::CHANGE_ADDRESS_INDEX;
 use bdk_mweb::{
@@ -44,8 +46,7 @@ use bdk_wallet::bitcoin::{Address, Amount, Network, NetworkKind, Transaction};
 use bdk_wallet::template::Bip84;
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::{
-    extract_finished_mweb_tx, extract_pegin_with_mweb_psbt, KeychainKind, MwebStore,
-    PersistedWallet, SignOptions, Wallet,
+    extract_pegin_with_mweb_psbt, KeychainKind, MwebStore, PersistedWallet, SignOptions, Wallet,
 };
 use clap::{Parser, Subcommand};
 use rand::RngCore;
@@ -101,7 +102,11 @@ enum Cmd {
         fee: u64,
     },
     /// mwebsync-shaped LIP-0006 sync (`LITECOIN_P2P`); dates UTXOs via fine header window.
-    Sync,
+    Sync {
+        /// After each pass, wait for a new transparent tip (Esplora poll) and sync again.
+        #[arg(long)]
+        follow: bool,
+    },
     /// Scan a raw Litecoin tx hex for owned MWEB outputs (Nexus payment paste).
     ScanTx {
         #[arg(long)]
@@ -169,7 +174,7 @@ fn main() -> anyhow::Result<()> {
             if !wallet.sign(&mut prepared.psbt, SignOptions::default())? {
                 bail!("pegin PSBT not fully signed");
             }
-            // PSBT path: MwebPsbt maps + extract (interim attach_mweb_tx still available).
+            // PSBT path: MwebPsbt maps + sign_mweb_components + extract (no attach_mweb_tx).
             let tx = extract_pegin_with_mweb_psbt(prepared.psbt, &prepared.pegin)?;
             let txid = broadcast_tx(&client, &tx)?;
             println!("Broadcast peg-in: https://litecoinspace.org/tx/{txid}");
@@ -202,7 +207,8 @@ fn main() -> anyhow::Result<()> {
                 "spendable_coins={} tip={tip} maturity={MWEB_PEGIN_MATURITY}",
                 spendable.len()
             );
-            let finished = wallet.build_mweb_send(
+            // In-PSBT path: fund maps → sign_mweb_components → extract (no attach / no pre-built mw_tx).
+            let mut funded = wallet.fund_mweb_send(
                 store.db(),
                 &keys,
                 dest,
@@ -211,137 +217,186 @@ fn main() -> anyhow::Result<()> {
                 CHANGE_ADDRESS_INDEX,
                 &secp,
             )?;
-            let tx = extract_finished_mweb_tx(&finished)?;
+            let spent_ids: Vec<_> = funded.spent_coins.iter().map(|c| c.output_id).collect();
+            let (tx, change) =
+                wallet.sign_and_extract_funded_mweb(&mut funded, &keys, &secp)?;
             let txid = broadcast_tx(&client, &tx)?;
-            println!("Broadcast MWEB send: https://litecoinspace.org/tx/{txid}");
-            for id in &finished.spent_output_ids {
+            let wtxid = tx.compute_wtxid();
+            println!("Broadcast MWEB send wtxid={wtxid} (explorer txid unreliable for pure MWEB)");
+            println!("txid={txid}");
+            for id in &spent_ids {
                 let _ = store.db_mut().mark_spent(id);
             }
-            if let Some(mut change) = finished.change {
+            if let Some(mut change) = change {
                 change.block_height = None;
                 store.db_mut().insert(change);
             }
             store.persist_file_store(&mut file_store)?;
         }
-        Cmd::Sync => {
+        Cmd::Sync { follow } => {
             let (mut wallet, mut db) = load_transparent_wallet()?;
             let client = esplora_client::Builder::new(ESPLORA_URL).build_blocking();
-            sync_transparent(&mut wallet, &client)?;
-            wallet.persist(&mut db)?;
-
-            let tip_height = wallet.latest_checkpoint().height();
-            let tip_hash = wallet.latest_checkpoint().hash();
             let peers = p2p_addrs()?;
-            println!("MWEB sync tip={tip_height} hash={tip_hash} peers={peers:?}");
-
-            // Fail fast if litecoind/P2P is down (before slow Esplora fine-window fetches).
-            print!("Connecting P2P (failover {:?})...", peers);
-            let mut peer = connect_first_peer(&peers, Network::Bitcoin).with_context(|| {
-                format!(
-                    "TcpMwebPeer connect to {peers:?}\n\
-                     Start mainnet litecoind (P2P port 9333) or set LITECOIN_P2P=host:port[,host2:port2].\n\
-                     Esplora cannot serve LIP-0006 mwebheader/leafset/utxos."
-                )
-            })?;
-            println!(" ok");
+            println!("P2P PeerPool {:?}", peers);
+            let mut pool = PeerPool::new(peers.clone());
+            // Smoke-connect so we fail fast with a clear message if no peers are up.
+            {
+                let peer = pool.connect_next(Network::Bitcoin).with_context(|| {
+                    format!(
+                        "TcpMwebPeer connect to {peers:?}\n\
+                         Start mainnet litecoind (P2P port 9333) or set LITECOIN_P2P=host:port[,host2:port2].\n\
+                         Esplora cannot serve LIP-0006 mwebheader/leafset/utxos."
+                    )
+                })?;
+                println!(" initial peer ok ({})", peer.addr_string());
+            }
 
             let mut state = load_sync_state()?;
-            // First sync (empty leafset): tip-only dating to avoid 500-header storm.
-            let first_sync = state.leafset.is_empty();
-            let syncer = if first_sync {
-                println!("First sync: tip-only dating (set MWEB_FINE_SYNC=1 for full fine window)");
-                if std::env::var("MWEB_FINE_SYNC").ok().as_deref() == Some("1") {
-                    MwebSyncer::new()
-                } else {
+            let poll_secs: u64 = std::env::var("MWEB_TIP_POLL_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(30);
+
+            loop {
+                sync_transparent(&mut wallet, &client)?;
+                wallet.persist(&mut db)?;
+
+                let tip_height = wallet.latest_checkpoint().height();
+                let tip_hash = wallet.latest_checkpoint().hash();
+                println!(
+                    "MWEB sync tip={tip_height} hash={tip_hash} last_peer={:?}",
+                    pool.last_connected()
+                );
+
+                // First sync: tip-only (fast). Later: fine window 4000 (mwebsync). Overrides:
+                // MWEB_FINE_SYNC=1|full → fine even on first; =fast → window 500; =tip → always tip-only.
+                let first_sync = state.leafset.is_empty();
+                let fine_env = std::env::var("MWEB_FINE_SYNC").ok();
+                let syncer = if fine_env.as_deref() == Some("tip")
+                    || (first_sync
+                        && fine_env.as_deref() != Some("1")
+                        && fine_env.as_deref() != Some("full"))
+                {
+                    println!(
+                        "Dating: tip-only (set MWEB_FINE_SYNC=1 for fine window={FINE_WINDOW})"
+                    );
                     MwebSyncer::tip_only()
-                }
-            } else {
-                MwebSyncer::new()
-            };
+                } else {
+                    let mut s = MwebSyncer::new();
+                    if fine_env.as_deref() == Some("fast") {
+                        s.fine_window = FINE_WINDOW_FAST;
+                    }
+                    println!("Dating: fine window={}", s.fine_window);
+                    s
+                };
 
-            let mut hashes = BTreeMap::new();
-            hashes.insert(tip_height, tip_hash);
-            let need: Vec<u32> = if matches!(syncer.dating, DatingMode::TipOnly) {
-                vec![tip_height]
-            } else {
-                fine_sample_heights(tip_height, FINE_WINDOW)
-                    .into_iter()
-                    .filter(|h| !state.height_map.contains_key(h))
-                    .collect()
-            };
-            if need.len() > 1 {
-                println!(
-                    "Fetching {} Esplora block hashes for fine-window dating…",
-                    need.len()
-                );
-            }
-            for (i, h) in need.iter().enumerate() {
-                if need.len() > 1 && i % 50 == 0 {
-                    print!("  hash {}/{}…\r", i + 1, need.len());
-                    let _ = std::io::stdout().flush();
+                let mut hashes = BTreeMap::new();
+                hashes.insert(tip_height, tip_hash);
+                let need: Vec<u32> = if matches!(syncer.dating, DatingMode::TipOnly) {
+                    vec![tip_height]
+                } else {
+                    fine_sample_heights(tip_height, syncer.fine_window)
+                        .into_iter()
+                        .filter(|h| !state.height_map.contains_key(h))
+                        .collect()
+                };
+                if need.len() > 1 {
+                    println!(
+                        "Fetching {} Esplora block hashes for fine-window dating…",
+                        need.len()
+                    );
                 }
-                match client.get_block_hash(*h) {
-                    Ok(hash) => {
-                        hashes.insert(*h, hash);
+                for (i, h) in need.iter().enumerate() {
+                    if need.len() > 1 && i % 50 == 0 {
+                        print!("  hash {}/{}…\r", i + 1, need.len());
+                        let _ = std::io::stdout().flush();
                     }
-                    Err(e) => {
-                        eprintln!("\nwarn: esplora hash@{h}: {e}");
+                    match client.get_block_hash(*h) {
+                        Ok(hash) => {
+                            hashes.insert(*h, hash);
+                        }
+                        Err(e) => {
+                            eprintln!("\nwarn: esplora hash@{h}: {e}");
+                        }
                     }
                 }
-            }
-            if need.len() > 1 {
-                println!("  hash {}/{} done", need.len(), need.len());
-            }
-            let headers = FixedHeaderProvider {
-                tip_hash,
-                tip_height,
-                hashes,
-            };
-            let mut notifier = ReadyNotifier { tip_height };
+                if need.len() > 1 {
+                    println!("  hash {}/{} done", need.len(), need.len());
+                }
+                // Live tip fields via set_tip; fine hashes refreshed each pass.
+                let mut headers = FixedHeaderProvider {
+                    tip_hash,
+                    tip_height,
+                    hashes,
+                };
+                headers.set_tip(tip_hash, tip_height);
+                let mut notifier = ReadyNotifier { tip_height };
 
-            println!("Running differential LIP sync (first pass may download full leafset)…");
-            let result = store.sync_differential_checkpointed(
-                &syncer,
-                &headers,
-                &mut notifier,
-                &mut peer,
-                &mut state,
-                &keys,
-                &book,
-                &secp,
-                Some(&mut |state, db| {
-                    if let Err(e) = save_sync_state(state) {
-                        eprintln!("warn: checkpoint sync state: {e}");
-                    }
-                    let staged = db.take_staged();
-                    if let Err(e) = file_store.append(&staged) {
-                        eprintln!("warn: checkpoint mweb.db: {e}");
-                    } else if state.utxo_cursor.is_some() {
-                        eprintln!(
-                            "  checkpointed cursor={:?} pending_tip={:?}",
-                            state.utxo_cursor, state.pending_tip_hash
-                        );
-                    }
-                }),
-            )?;
-            println!(
-                "downloaded={} found={} spent={} height_map={}",
-                result.downloaded,
-                result.found.len(),
-                result.spent.len(),
-                state.height_map.len()
-            );
-            for c in store.db().unspent() {
+                println!("Running differential LIP sync (PeerPool ban/rotate on hard errors)…");
+                let result = pool
+                    .with_failover(Network::Bitcoin, |peer| {
+                        store.sync_differential_checkpointed(
+                            &syncer,
+                            &headers,
+                            &mut notifier,
+                            peer,
+                            &mut state,
+                            &keys,
+                            &book,
+                            &secp,
+                            Some(&mut |state, db| {
+                                if let Err(e) = save_sync_state(state) {
+                                    eprintln!("warn: checkpoint sync state: {e}");
+                                }
+                                let staged = db.take_staged();
+                                if let Err(e) = file_store.append(&staged) {
+                                    eprintln!("warn: checkpoint mweb.db: {e}");
+                                } else if state.utxo_cursor.is_some() {
+                                    eprintln!(
+                                        "  checkpointed cursor={:?} pending_tip={:?}",
+                                        state.utxo_cursor, state.pending_tip_hash
+                                    );
+                                }
+                            }),
+                        )
+                    })
+                    .with_context(|| format!("MWEB sync failed; peers={peers:?}"))?;
                 println!(
-                    "  coin amount={} height={:?} leaf={:?}",
-                    Amount::from_sat(c.amount),
-                    c.block_height,
-                    c.leaf_index
+                    "downloaded={} found={} spent={} height_map={}",
+                    result.downloaded,
+                    result.found.len(),
+                    result.spent.len(),
+                    state.height_map.len()
                 );
+                for c in store.db().unspent() {
+                    println!(
+                        "  coin amount={} height={:?} leaf={:?}",
+                        Amount::from_sat(c.amount),
+                        c.block_height,
+                        c.leaf_index
+                    );
+                }
+                save_sync_state(&state)?;
+                store.persist_file_store(&mut file_store)?;
+                print_balances(&wallet, &store);
+
+                if !follow {
+                    break;
+                }
+                let tip_before = tip_height;
+                println!("Waiting for tip > {tip_before} (poll {poll_secs}s)…");
+                let mut tip_wait = PollingTipNotifier::new(
+                    tip_before,
+                    Duration::from_secs(poll_secs),
+                    || {
+                        client
+                            .get_height()
+                            .map_err(|e| bdk_mweb::Error::Crypto(format!("esplora tip: {e}")))
+                    },
+                );
+                tip_wait.wait_tip_changed(tip_before)?;
+                println!("tip advanced to {}", tip_wait.tip_height);
             }
-            save_sync_state(&state)?;
-            store.persist_file_store(&mut file_store)?;
-            print_balances(&wallet, &store);
         }
         Cmd::ScanTx { hex, height } => {
             let raw = Vec::<u8>::from_hex(hex.trim())?;
@@ -383,7 +438,7 @@ fn main() -> anyhow::Result<()> {
                 a.address.script_pubkey()
             };
 
-            let finished = wallet.build_mweb_pegout(
+            let mut funded = wallet.fund_mweb_pegout(
                 store.db(),
                 &keys,
                 dest_script,
@@ -392,14 +447,18 @@ fn main() -> anyhow::Result<()> {
                 CHANGE_ADDRESS_INDEX,
                 &secp,
             )?;
-            let tx = extract_finished_mweb_tx(&finished)?;
+            let spent_ids: Vec<_> = funded.spent_coins.iter().map(|c| c.output_id).collect();
+            let (tx, change) =
+                wallet.sign_and_extract_funded_mweb(&mut funded, &keys, &secp)?;
             let txid = broadcast_tx(&client, &tx)?;
-            println!("Broadcast peg-out: https://litecoinspace.org/tx/{txid}");
+            let wtxid = tx.compute_wtxid();
+            println!("Broadcast peg-out wtxid={wtxid}");
+            println!("txid={txid}");
             println!("HogEx credits the transparent SPK after mining; re-run sync / mainnet_sync.");
-            for id in &finished.spent_output_ids {
+            for id in &spent_ids {
                 let _ = store.db_mut().mark_spent(id);
             }
-            if let Some(mut change) = finished.change {
+            if let Some(mut change) = change {
                 change.block_height = None;
                 store.db_mut().insert(change);
             }
@@ -426,17 +485,31 @@ fn print_balances(wallet: &Wallet, store: &MwebStore) {
         .iter()
         .map(|c| c.amount)
         .sum();
+    let immature: u64 = store
+        .db()
+        .unspent()
+        .filter(|c| c.is_pegin && !c.is_spendable(tip, MWEB_PEGIN_MATURITY))
+        .map(|c| c.amount)
+        .sum();
     println!(
         "transparent total={} confirmed={}",
         combined.transparent.total(),
         combined.transparent.confirmed
     );
     println!(
-        "mweb confirmed={} pending={} spendable={} (tip={tip}, maturity={MWEB_PEGIN_MATURITY})",
+        "mweb confirmed={} (1+ conf) pending={} (unconfirmed height) spendable={} (mature)",
         combined.mweb_confirmed,
         combined.mweb_untrusted_pending,
         Amount::from_sat(spendable),
     );
+    if immature > 0 {
+        println!(
+            "mweb peg-in immature={} (need {MWEB_PEGIN_MATURITY} confs; tip={tip})",
+            Amount::from_sat(immature)
+        );
+    } else {
+        println!("mweb tip={tip} peg-in maturity={MWEB_PEGIN_MATURITY}");
+    }
 }
 
 fn parse_ltc(s: &str) -> anyhow::Result<Amount> {
@@ -626,6 +699,23 @@ fn broadcast_tx(
     tx: &Transaction,
 ) -> anyhow::Result<bdk_wallet::bitcoin::Txid> {
     let txid = tx.compute_txid();
+    let wtxid = tx.compute_wtxid();
+    // Pure MWEB txs share an empty transparent skeleton: `compute_txid` ignores `mw_tx`, so
+    // explorers that strip the extension accept a 12-byte shell under one colliding txid.
+    // Always push MWEB bodies through litecoind when RPC is configured.
+    let is_mweb = tx.mw_tx.is_some();
+    if is_mweb {
+        println!("mweb txid={txid} wtxid={wtxid} (use wtxid; txid ignores mw_tx)");
+        if std::env::var_os("LITECOIN_RPC_URL").is_some() {
+            let hex = serialize(tx).to_lower_hex_string();
+            rpc_sendrawtransaction(&hex)?;
+            println!("Broadcast via Litecoin RPC OK");
+            return Ok(txid);
+        }
+        eprintln!(
+            "warn: LITECOIN_RPC_URL unset; Esplora often drops mw_tx on MWEB-only broadcasts"
+        );
+    }
     match client.broadcast(tx) {
         Ok(()) => {
             println!("Broadcast via Esplora OK");

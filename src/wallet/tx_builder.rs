@@ -719,8 +719,7 @@ impl<'a, Cs> TxBuilder<'a, Cs> {
     /// Attach a pre-authored MWEB transaction body for peg-in construction.
     ///
     /// BIP174 PSBTs cannot carry MWEB bodies (`UnsupportedMwebOrHogEx`). Prefer
-    /// [`finish_mweb_pegin`], which returns the body alongside the PSBT for
-    /// [`attach_mweb_tx`] after signing.
+    /// [`finish_mweb_pegin`] + [`extract_pegin_with_mweb_psbt`] after signing.
     pub fn mweb_tx(&mut self, mw_tx: bitcoin::blockdata::mimblewimble::Transaction) -> &mut Self {
         self.params.mweb_tx = Some(mw_tx);
         self
@@ -846,10 +845,14 @@ impl<Cs: CoinSelectionAlgorithm> TxBuilder<'_, Cs> {
 
 /// Attach a pre-authored MWEB body after PSBT sign/extract.
 ///
-/// BIP174 PSBTs cannot serialize `mw_tx`; peg-in construction keeps the body aside until the
-/// transparent transaction is extracted. Prefer [`bdk_mweb::MwebPsbt::extract_tx_with_mweb`] when
-/// the PSBT was populated via [`bdk_mweb::MwebPsbt`] (ltcsuite `0x90+` maps). This helper remains
-/// for interim CLI / tests until full PSBTv2 lands in the `litecoin` crate.
+/// BIP174 PSBTs cannot serialize `mw_tx`; peg-in construction historically kept the body aside
+/// until the transparent transaction was extracted. Prefer
+/// [`extract_finished_mweb_tx`] / [`extract_pegin_with_mweb_psbt`] (ltcsuite `0x90+` maps +
+/// [`Wallet::sign_mweb_components`](crate::Wallet::sign_mweb_components)).
+#[deprecated(
+    since = "2.3.0",
+    note = "use extract_finished_mweb_tx / extract_pegin_with_mweb_psbt (MwebPsbt) instead"
+)]
 pub fn attach_mweb_tx(
     tx: &mut Transaction,
     mw_tx: bitcoin::blockdata::mimblewimble::Transaction,
@@ -857,21 +860,31 @@ pub fn attach_mweb_tx(
     tx.mw_tx = Some(mw_tx);
 }
 
-/// Extract a network tx from a finished MWEB spend using [`bdk_mweb::MwebPsbt`] (no separate attach).
+/// Extract a network tx from a finished MWEB spend via native PSBT MWEB maps + extract.
 #[cfg(feature = "mweb")]
+#[deprecated(
+    since = "3.1.0",
+    note = "use fund_mweb_send + sign_and_extract_funded_mweb instead of FinishedMwebTx"
+)]
 pub fn extract_finished_mweb_tx(
     finished: &bdk_mweb::FinishedMwebTx,
 ) -> Result<Transaction, bdk_mweb::Error> {
-    bdk_mweb::MwebPsbt::from_finished_mweb_tx(finished)?.extract_tx_with_mweb()
+    let secp = bitcoin::key::Secp256k1::new();
+    let mut psbt = bdk_mweb::psbt_from_finished_mweb_tx(finished)?;
+    bdk_mweb::sign_mweb_components(&mut psbt, &finished.spent_coins, &secp)?;
+    bdk_mweb::extract_tx_with_mweb(&psbt)
 }
 
-/// Finalize a signed peg-in PSBT with an authored MWEB body via [`bdk_mweb::MwebPsbt`].
+/// Finalize a signed peg-in PSBT with an authored MWEB body via native PSBT MWEB maps.
 #[cfg(feature = "mweb")]
 pub fn extract_pegin_with_mweb_psbt(
-    psbt: bitcoin::psbt::Psbt,
+    mut psbt: bitcoin::psbt::Psbt,
     pegin: &bdk_mweb::FinishedMwebPegin,
 ) -> Result<Transaction, bdk_mweb::Error> {
-    bdk_mweb::MwebPsbt::from_pegin_psbt(psbt, pegin)?.extract_tx_with_mweb()
+    let secp = bitcoin::key::Secp256k1::new();
+    bdk_mweb::populate_pegin_psbt(&mut psbt, pegin);
+    bdk_mweb::sign_mweb_components(&mut psbt, &[], &secp)?;
+    bdk_mweb::extract_tx_with_mweb(&psbt)
 }
 
 #[derive(Debug)]

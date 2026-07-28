@@ -8,6 +8,9 @@ use alloc::vec::Vec;
 use core::fmt;
 
 use bdk_mweb::keys::MasterKeys;
+use bdk_mweb::psbt_fund::{
+    change_from_funded, fund_mweb_spend, sign_funded_mweb, FundedMwebPsbt,
+};
 use bdk_mweb::tx_builder::{
     build_pegin, FinishedMwebPegin, FinishedMwebTx, MwebTxBuilder, CHANGE_ADDRESS_INDEX,
 };
@@ -15,7 +18,7 @@ use bdk_mweb::{MwebBalance, MwebCoin, MwebCoinDatabase, MWEB_PEGIN_MATURITY};
 use bitcoin::key::Secp256k1;
 use bitcoin::psbt::Psbt;
 use bitcoin::secp256k1::All;
-use bitcoin::{Address, Amount, Network, NetworkKind, ScriptBuf};
+use bitcoin::{Address, Amount, Network, NetworkKind, ScriptBuf, Transaction};
 
 use crate::wallet::error::CreateTxError;
 use crate::wallet::{Balance, Wallet};
@@ -227,6 +230,31 @@ impl MwebStore {
             checkpoint,
         )
     }
+
+    /// Differential sync with library [`PeerPool`] ban/rotate on leafset/PMMR/timeout errors.
+    ///
+    /// For mid-pass checkpoints, call [`PeerPool::with_failover`] around
+    /// [`Self::sync_differential_checkpointed`] from the application (see `mainnet_mweb`).
+    pub fn sync_differential_pooled<P, N>(
+        &mut self,
+        syncer: &bdk_mweb::mweb_sync::MwebSyncer,
+        headers: &P,
+        notifier: &mut N,
+        pool: &mut bdk_mweb::mweb_sync::PeerPool,
+        network: Network,
+        state: &mut bdk_mweb::mweb_sync::SyncState,
+        keys: &MasterKeys,
+        book: &bdk_mweb::AddressBook,
+        secp: &Secp256k1<All>,
+    ) -> Result<bdk_mweb::lip0006::SyncResult, bdk_mweb::Error>
+    where
+        P: bdk_mweb::mweb_sync::BlockHeaderProvider,
+        N: bdk_mweb::mweb_sync::SyncNotifier,
+    {
+        syncer.run_once_with_pool(
+            headers, notifier, pool, network, state, keys, book, &mut self.db, secp,
+        )
+    }
 }
 
 /// Result of [`Wallet::prepare_mweb_pegin`].
@@ -234,7 +262,7 @@ impl MwebStore {
 pub struct PreparedMwebPegin {
     /// Unsigned (or partially signed) transparent peg-in PSBT.
     pub psbt: Psbt,
-    /// MWEB body to [`super::attach_mweb_tx`] after extract.
+    /// MWEB body (also carried on [`Self::pegin`]); prefer [`super::extract_pegin_with_mweb_psbt`].
     pub mw_tx: bitcoin::blockdata::mimblewimble::Transaction,
     /// Authored peg-in metadata (kernel id, owned outputs for later DB insert).
     pub pegin: FinishedMwebPegin,
@@ -364,9 +392,32 @@ impl Wallet {
         self.balance_combined(store.db())
     }
 
+    /// Finalize MWEB maps on a native [`Psbt`] using coin secrets from `db` (ltcwallet
+    /// `SignMwebComponents` shape). Prefer [`Self::fund_mweb_send`] +
+    /// [`Self::sign_and_extract_funded_mweb`] for the happy path.
+    pub fn sign_mweb_components(
+        &self,
+        psbt: &mut Psbt,
+        db: &MwebCoinDatabase,
+        secp: &Secp256k1<All>,
+    ) -> Result<(), MwebFacadeError> {
+        let mut coins = db.unspent_vec();
+        for inp in &psbt.mweb_inputs {
+            if let Some(id) = inp.output_id {
+                if let Some(c) = db.get_spent(&id) {
+                    if !coins.iter().any(|x| x.output_id == id) {
+                        coins.push(c.clone());
+                    }
+                }
+            }
+        }
+        bdk_mweb::sign_mweb_components(psbt, &coins, secp)?;
+        Ok(())
+    }
+
     /// Author a peg-in body and assemble the transparent v9 PSBT half.
     ///
-    /// Caller must sign `psbt`, extract, [`super::attach_mweb_tx`], broadcast,
+    /// Caller must sign `psbt`, then [`super::extract_pegin_with_mweb_psbt`], broadcast,
     /// then insert scanned/`pegin.outputs` into their [`MwebCoinDatabase`] after maturity.
     pub fn prepare_mweb_pegin(
         &mut self,
@@ -392,7 +443,54 @@ impl Wallet {
         Ok(PreparedMwebPegin { psbt, mw_tx, pegin })
     }
 
+    /// Fund an MWEB→MWEB spend (maps only, no `mw_tx`) from spendable coins.
+    pub fn fund_mweb_send(
+        &self,
+        db: &MwebCoinDatabase,
+        keys: &MasterKeys,
+        recipient: Address,
+        amount: Amount,
+        fee: Amount,
+        change_index: u32,
+        secp: &Secp256k1<All>,
+    ) -> Result<FundedMwebPsbt, MwebFacadeError> {
+        let tip = self.latest_checkpoint().height();
+        let pool = db.unspent_spendable(tip, MWEB_PEGIN_MATURITY);
+        let needed = amount.to_sat().saturating_add(fee.to_sat());
+        let selected = select_mweb_coins(&pool, needed)?;
+        Ok(fund_mweb_spend(
+            selected,
+            vec![(recipient, amount.to_sat())],
+            vec![],
+            fee.to_sat(),
+            keys,
+            change_index,
+            network_kind(self.network()),
+            secp,
+        )?)
+    }
+
+    /// Sign a [`FundedMwebPsbt`] and extract a network transaction (`mw_tx` at extract only).
+    pub fn sign_and_extract_funded_mweb(
+        &self,
+        funded: &mut FundedMwebPsbt,
+        keys: &MasterKeys,
+        secp: &Secp256k1<All>,
+    ) -> Result<(Transaction, Option<MwebCoin>), MwebFacadeError> {
+        sign_funded_mweb(funded, keys, secp)?;
+        let change = change_from_funded(funded, keys, secp)?;
+        let tx = funded.extract_tx()?;
+        Ok((tx, change))
+    }
+
     /// Build an MWEB→MWEB spend from **confirmed** coins in `db` at the wallet tip.
+    ///
+    /// Prefer [`Self::fund_mweb_send`] + [`Self::sign_and_extract_funded_mweb`] for the
+    /// ltcsuite in-PSBT path.
+    #[deprecated(
+        since = "3.1.0",
+        note = "use fund_mweb_send + sign_and_extract_funded_mweb instead"
+    )]
     pub fn build_mweb_send(
         &self,
         db: &MwebCoinDatabase,
@@ -403,6 +501,7 @@ impl Wallet {
         change_index: u32,
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
+        #[allow(deprecated)]
         self.build_mweb_send_with(
             db,
             keys,
@@ -416,6 +515,10 @@ impl Wallet {
     }
 
     /// Build an MWEB→MWEB spend; set `include_unconfirmed` to also spend pending coins.
+    #[deprecated(
+        since = "3.1.0",
+        note = "use fund_mweb_send + sign_and_extract_funded_mweb instead"
+    )]
     #[allow(clippy::too_many_arguments)]
     pub fn build_mweb_send_with(
         &self,
@@ -447,7 +550,40 @@ impl Wallet {
         Ok(builder.finish(keys, change_index, network_kind(self.network()), secp)?)
     }
 
+    /// Fund a peg-out (maps only) from spendable coins.
+    pub fn fund_mweb_pegout(
+        &self,
+        db: &MwebCoinDatabase,
+        keys: &MasterKeys,
+        script_pubkey: ScriptBuf,
+        amount: Amount,
+        fee: Amount,
+        change_index: u32,
+        secp: &Secp256k1<All>,
+    ) -> Result<FundedMwebPsbt, MwebFacadeError> {
+        let tip = self.latest_checkpoint().height();
+        let pool = db.unspent_spendable(tip, MWEB_PEGIN_MATURITY);
+        let needed = amount.to_sat().saturating_add(fee.to_sat());
+        let selected = select_mweb_coins(&pool, needed)?;
+        Ok(fund_mweb_spend(
+            selected,
+            vec![],
+            vec![(script_pubkey, amount.to_sat())],
+            fee.to_sat(),
+            keys,
+            change_index,
+            network_kind(self.network()),
+            secp,
+        )?)
+    }
+
     /// Build a peg-out from **confirmed** coins in `db` to a transparent `script_pubkey`.
+    ///
+    /// Prefer [`Self::fund_mweb_pegout`] + [`Self::sign_and_extract_funded_mweb`].
+    #[deprecated(
+        since = "3.1.0",
+        note = "use fund_mweb_pegout + sign_and_extract_funded_mweb instead"
+    )]
     pub fn build_mweb_pegout(
         &self,
         db: &MwebCoinDatabase,
@@ -458,6 +594,7 @@ impl Wallet {
         change_index: u32,
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
+        #[allow(deprecated)]
         self.build_mweb_pegout_with(
             db,
             keys,
@@ -471,6 +608,10 @@ impl Wallet {
     }
 
     /// Peg-out helper; set `include_unconfirmed` to also spend pending coins.
+    #[deprecated(
+        since = "3.1.0",
+        note = "use fund_mweb_pegout + sign_and_extract_funded_mweb instead"
+    )]
     #[allow(clippy::too_many_arguments)]
     pub fn build_mweb_pegout_with(
         &self,
@@ -502,6 +643,10 @@ impl Wallet {
     }
 
     /// Convenience: peg-out with Core change index (`0`).
+    #[deprecated(
+        since = "3.1.0",
+        note = "use fund_mweb_pegout + sign_and_extract_funded_mweb instead"
+    )]
     pub fn build_mweb_pegout_default_change(
         &self,
         db: &MwebCoinDatabase,
@@ -511,6 +656,7 @@ impl Wallet {
         fee: Amount,
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
+        #[allow(deprecated)]
         self.build_mweb_pegout(
             db,
             keys,

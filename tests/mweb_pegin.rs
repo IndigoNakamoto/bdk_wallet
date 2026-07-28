@@ -52,6 +52,7 @@ fn bdk_assembles_pegin_from_finalizer_body_and_core_recognizes() {
         .expect("sign");
     assert!(signed, "peg-in transparent inputs must be signed");
     let mut bdk_tx = psbt.extract_tx().expect("extract");
+    #[allow(deprecated)]
     bdk_wallet::attach_mweb_tx(&mut bdk_tx, mw_body);
     assert!(bdk_tx.mw_tx.is_some());
     assert!(bdk_tx.output.iter().any(|o| {

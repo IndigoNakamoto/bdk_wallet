@@ -12,7 +12,7 @@ use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
 use bdk_wallet::bitcoin::{Amount, Network};
 use bdk_wallet::test_utils::{get_funded_wallet_wpkh, get_test_wpkh_and_change_desc};
-use bdk_wallet::{attach_mweb_tx, KeychainKind, SignOptions, Wallet};
+use bdk_wallet::{extract_pegin_with_mweb_psbt, KeychainKind, SignOptions, Wallet};
 
 const SEED_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
@@ -152,8 +152,7 @@ fn wallet_facade_pegin_pegout_roundtrip() {
         .sign(&mut prepared.psbt, SignOptions::default())
         .expect("sign");
     assert!(signed);
-    let mut tx = prepared.psbt.extract_tx().expect("extract");
-    attach_mweb_tx(&mut tx, prepared.mw_tx.clone());
+    let tx = extract_pegin_with_mweb_psbt(prepared.psbt, &prepared.pegin).expect("mweb psbt extract");
     env.rpc
         .send_raw_transaction(&tx)
         .expect("broadcast peg-in");
@@ -194,8 +193,9 @@ fn wallet_facade_pegin_pegout_roundtrip() {
     let pegout_amt = Amount::from_btc(0.3).unwrap();
     let pegout_fee = Amount::from_sat(50_000);
 
-    let finished = wallet
-        .build_mweb_pegout(
+    // In-PSBT fund → sign → extract (no attach_mweb_tx, no pre-built mw_tx).
+    let mut funded = wallet
+        .fund_mweb_pegout(
             &db,
             &keys,
             pegout_addr.script_pubkey(),
@@ -204,15 +204,25 @@ fn wallet_facade_pegin_pegout_roundtrip() {
             CHANGE_ADDRESS_INDEX,
             &secp,
         )
-        .expect("build_mweb_pegout");
+        .expect("fund_mweb_pegout");
+    assert!(funded.psbt.mweb_tx_offset.is_none());
+    let (pegout_tx, _change) = wallet
+        .sign_and_extract_funded_mweb(&mut funded, &keys, &secp)
+        .expect("sign_and_extract");
+    assert!(pegout_tx.mw_tx.is_some());
+    assert!(funded
+        .psbt
+        .mweb_outputs
+        .iter()
+        .any(|o| o.stealth_address.is_some() || o.commit.is_some()));
 
     let (allowed, reason) = env
         .rpc
-        .test_mempool_accept(&finished.tx)
+        .test_mempool_accept(&pegout_tx)
         .expect("testmempoolaccept");
     assert!(allowed, "reject-reason={reason:?}");
     env.rpc
-        .send_raw_transaction(&finished.tx)
+        .send_raw_transaction(&pegout_tx)
         .expect("send peg-out");
     env.mine_blocks(1, &mining).expect("confirm peg-out");
 

@@ -26,7 +26,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
 # Nested clone uses path deps against the sibling Litecoin BDK crates.
 bdk_chain = { path = "../crates/chain", version = "0.23.2", features = ["miniscript", "serde"], default-features = false }
 bdk_mweb = { path = "../crates/mweb", version = "0.1.0", optional = true, default-features = false, features = ["std", "zkp", "persist", "encrypt", "lip0006"] }
-bitcoin = { package = "litecoin", version = "0.32.8-rc.1", features = ["serde", "base64"], default-features = false }
+bitcoin = { package = "litecoin", version = "0.32.8-rc.2", features = ["serde", "base64"], default-features = false }
 miniscript = { git = "https://github.com/IndigoNakamoto/rust-miniscript", rev = "e3187272617adad69f5b9ece62d25ea28b70fd25", features = ["serde"], default-features = false }
 rand_core = { version = "0.6.4" }
 serde_json = { version = "1" }
@@ -92,3 +92,7 @@ required-features = ["mweb", "file_store", "test-utils"]
 [[example]]
 name = "mainnet_mweb"
 required-features = ["mweb", "file_store", "rusqlite"]
+
+# Until crates.io publishes litecoin 0.32.8-rc.2 (native PSBTv2 MWEB maps).
+[patch.crates-io]
+litecoin = { path = "../../rust-litecoin/litecoin" }
