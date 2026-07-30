@@ -25,7 +25,7 @@ use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
 use bdk_wallet::bitcoin::{Amount, Network};
 use bdk_wallet::test_utils::get_test_wpkh_and_change_desc;
-use bdk_wallet::{extract_pegin_with_mweb_psbt, KeychainKind, MwebStore, SignOptions, Wallet};
+use bdk_wallet::{extract_prepared_mweb_pegin, KeychainKind, MwebStore, SignOptions, Wallet};
 
 const SEED_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const MWEB_MAGIC: &[u8] = b"bdk_mweb_v2";
@@ -77,7 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut prepared =
         wallet.prepare_mweb_pegin(&keys, 2, pegin_amount, mweb_fee, transparent_fee, &secp)?;
     assert!(wallet.sign(&mut prepared.psbt, SignOptions::default())?);
-    let tx = extract_pegin_with_mweb_psbt(prepared.psbt, &prepared.pegin)?;
+    let tx = extract_prepared_mweb_pegin(&prepared.psbt)?;
     env.rpc.send_raw_transaction(&tx)?;
     env.mine_mweb_activation(&mining)?;
     env.mine_blocks(MWEB_PEGIN_MATURITY, &mining)?;

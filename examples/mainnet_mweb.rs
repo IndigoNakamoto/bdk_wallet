@@ -46,7 +46,7 @@ use bdk_wallet::bitcoin::{Address, Amount, Network, NetworkKind, Transaction};
 use bdk_wallet::template::Bip84;
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::{
-    extract_pegin_with_mweb_psbt, KeychainKind, MwebStore, PersistedWallet, SignOptions, Wallet,
+    extract_prepared_mweb_pegin, KeychainKind, MwebStore, PersistedWallet, SignOptions, Wallet,
 };
 use clap::{Parser, Subcommand};
 use rand::RngCore;
@@ -174,14 +174,14 @@ fn main() -> anyhow::Result<()> {
             if !wallet.sign(&mut prepared.psbt, SignOptions::default())? {
                 bail!("pegin PSBT not fully signed");
             }
-            // PSBT path: MwebPsbt maps + sign_mweb_components + extract (no attach_mweb_tx).
-            let tx = extract_pegin_with_mweb_psbt(prepared.psbt, &prepared.pegin)?;
+            // Maps-first: MWEB already signed on PSBT; extract after transparent sign.
+            let tx = extract_prepared_mweb_pegin(&prepared.psbt)?;
             let txid = broadcast_tx(&client, &tx)?;
             println!("Broadcast peg-in: https://litecoinspace.org/tx/{txid}");
-            println!("kernel_id={}", prepared.pegin.kernel_id.to_lower_hex_string());
+            println!("kernel_id={}", prepared.kernel_id.to_lower_hex_string());
 
             let tip = wallet.latest_checkpoint().height();
-            for mut coin in prepared.pegin.outputs {
+            for mut coin in prepared.outputs {
                 coin.is_pegin = true;
                 coin.block_height = Some(tip);
                 store.db_mut().insert(coin);

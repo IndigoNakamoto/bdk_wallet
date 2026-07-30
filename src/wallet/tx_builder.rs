@@ -706,10 +706,14 @@ impl<'a, Cs> TxBuilder<'a, Cs> {
         self.add_recipient(spk, amount)
     }
 
-    /// Apply a BDK-authored peg-in body (`bdk_mweb::build_pegin`).
+    /// Apply a BDK-authored peg-in body (`FinishedMwebPegin` sidecar).
     ///
-    /// Sets the v9 recipient and stores `mw_tx` for [`finish_mweb_pegin`].
+    /// Prefer [`Wallet::prepare_mweb_pegin`](crate::Wallet::prepare_mweb_pegin) (maps-first).
     #[cfg(feature = "mweb")]
+    #[deprecated(
+        since = "3.1.0",
+        note = "use Wallet::prepare_mweb_pegin (fund_mweb_pegin path) instead"
+    )]
     pub fn apply_mweb_pegin(&mut self, pegin: &bdk_mweb::FinishedMwebPegin) -> &mut Self {
         self.add_mweb_pegin(pegin.kernel_id, Amount::from_sat(pegin.pegin_amount));
         self.mweb_tx(pegin.mw_tx.clone());
@@ -875,8 +879,20 @@ pub fn extract_finished_mweb_tx(
     bdk_mweb::extract_tx_with_mweb(&psbt)
 }
 
+/// Finalize a signed peg-in PSBT that already carries MWEB maps (maps-first path).
+#[cfg(feature = "mweb")]
+pub fn extract_prepared_mweb_pegin(
+    psbt: &bitcoin::psbt::Psbt,
+) -> Result<Transaction, bdk_mweb::Error> {
+    bdk_mweb::extract_tx_with_mweb(psbt)
+}
+
 /// Finalize a signed peg-in PSBT with an authored MWEB body via native PSBT MWEB maps.
 #[cfg(feature = "mweb")]
+#[deprecated(
+    since = "3.1.0",
+    note = "use prepare_mweb_pegin + extract_prepared_mweb_pegin (maps already on PSBT)"
+)]
 pub fn extract_pegin_with_mweb_psbt(
     mut psbt: bitcoin::psbt::Psbt,
     pegin: &bdk_mweb::FinishedMwebPegin,

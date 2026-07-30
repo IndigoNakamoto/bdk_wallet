@@ -12,7 +12,7 @@ use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
 use bdk_wallet::bitcoin::{Amount, Network};
 use bdk_wallet::test_utils::{get_funded_wallet_wpkh, get_test_wpkh_and_change_desc};
-use bdk_wallet::{extract_pegin_with_mweb_psbt, KeychainKind, SignOptions, Wallet};
+use bdk_wallet::{extract_prepared_mweb_pegin, KeychainKind, SignOptions, Wallet};
 
 const SEED_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
@@ -77,17 +77,15 @@ fn prepare_mweb_pegin_builds_psbt_and_body() {
         )
         .expect("prepare_mweb_pegin");
 
-    assert_eq!(prepared.pegin.pegin_amount, 20_000);
-    assert_eq!(prepared.pegin.kernel_id, {
-        use bdk_mweb::kernel_id;
-        kernel_id(prepared.pegin.mw_tx.body.kernels.first().unwrap())
-    });
+    assert_eq!(prepared.pegin_amount.to_sat(), 20_000);
+    assert_eq!(prepared.kernel_id.len(), 32);
     assert!(!prepared.psbt.inputs.is_empty());
     assert_eq!(
-        prepared.mw_tx.body.kernels.len(),
+        prepared.psbt.mweb_kernels.len(),
         1,
-        "peg-in has one kernel"
+        "peg-in has one kernel map"
     );
+    assert!(prepared.psbt.mweb_tx_offset.is_some());
 }
 
 #[test]
@@ -152,7 +150,7 @@ fn wallet_facade_pegin_pegout_roundtrip() {
         .sign(&mut prepared.psbt, SignOptions::default())
         .expect("sign");
     assert!(signed);
-    let tx = extract_pegin_with_mweb_psbt(prepared.psbt, &prepared.pegin).expect("mweb psbt extract");
+    let tx = extract_prepared_mweb_pegin(&prepared.psbt).expect("mweb psbt extract");
     env.rpc
         .send_raw_transaction(&tx)
         .expect("broadcast peg-in");

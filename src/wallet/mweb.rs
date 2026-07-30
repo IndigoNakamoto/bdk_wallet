@@ -9,11 +9,10 @@ use core::fmt;
 
 use bdk_mweb::keys::MasterKeys;
 use bdk_mweb::psbt_fund::{
-    change_from_funded, fund_mweb_spend, sign_funded_mweb, FundedMwebPsbt,
+    change_from_funded, fund_mweb_pegin, fund_mweb_spend, sign_funded_mweb, sign_funded_mweb_pegin,
+    FundedMwebPsbt,
 };
-use bdk_mweb::tx_builder::{
-    build_pegin, FinishedMwebPegin, FinishedMwebTx, MwebTxBuilder, CHANGE_ADDRESS_INDEX,
-};
+use bdk_mweb::tx_builder::{FinishedMwebTx, MwebTxBuilder, CHANGE_ADDRESS_INDEX};
 use bdk_mweb::{MwebBalance, MwebCoin, MwebCoinDatabase, MWEB_PEGIN_MATURITY};
 use bitcoin::key::Secp256k1;
 use bitcoin::psbt::Psbt;
@@ -258,14 +257,19 @@ impl MwebStore {
 }
 
 /// Result of [`Wallet::prepare_mweb_pegin`].
+///
+/// The PSBT already carries signed MWEB maps; after transparent signing call
+/// [`bdk_mweb::extract_tx_with_mweb`] (or [`super::extract_prepared_mweb_pegin`]).
 #[derive(Debug)]
 pub struct PreparedMwebPegin {
-    /// Unsigned (or partially signed) transparent peg-in PSBT.
+    /// Transparent peg-in PSBT with MWEB maps already populated and signed.
     pub psbt: Psbt,
-    /// MWEB body (also carried on [`Self::pegin`]); prefer [`super::extract_pegin_with_mweb_psbt`].
-    pub mw_tx: bitcoin::blockdata::mimblewimble::Transaction,
-    /// Authored peg-in metadata (kernel id, owned outputs for later DB insert).
-    pub pegin: FinishedMwebPegin,
+    /// Peg-in kernel id (= v9 witness program).
+    pub kernel_id: [u8; 32],
+    /// Transparent v9 output value.
+    pub pegin_amount: Amount,
+    /// Owned stealth outputs for insertion after maturity.
+    pub outputs: Vec<MwebCoin>,
 }
 
 /// Errors from Phase 6 MWEB facade helpers.
@@ -415,10 +419,14 @@ impl Wallet {
         Ok(())
     }
 
-    /// Author a peg-in body and assemble the transparent v9 PSBT half.
+    /// Author a peg-in via in-PSBT fund→sign, then assemble the transparent v9 PSBT half.
     ///
-    /// Caller must sign `psbt`, then [`super::extract_pegin_with_mweb_psbt`], broadcast,
-    /// then insert scanned/`pegin.outputs` into their [`MwebCoinDatabase`] after maturity.
+    /// Order: `fund_mweb_pegin` → `sign_funded_mweb_pegin` (computes `kernel_id`) → transparent
+    /// coin selection with v9 program → merge MWEB maps onto the PSBT.
+    ///
+    /// Caller must sign the transparent inputs on `psbt`, then
+    /// [`super::extract_prepared_mweb_pegin`] / [`bdk_mweb::extract_tx_with_mweb`], broadcast,
+    /// then insert `outputs` into their [`MwebCoinDatabase`] after maturity.
     pub fn prepare_mweb_pegin(
         &mut self,
         keys: &MasterKeys,
@@ -428,7 +436,7 @@ impl Wallet {
         transparent_fee: Amount,
         secp: &Secp256k1<All>,
     ) -> Result<PreparedMwebPegin, MwebFacadeError> {
-        let pegin = build_pegin(
+        let mut funded = fund_mweb_pegin(
             keys,
             receive_index,
             pegin_amount.to_sat(),
@@ -436,11 +444,23 @@ impl Wallet {
             network_kind(self.network()),
             secp,
         )?;
+        let kernel_id = sign_funded_mweb_pegin(&mut funded, keys, secp)?;
         let mut builder = self.build_tx();
-        builder.apply_mweb_pegin(&pegin);
+        builder.add_mweb_pegin(kernel_id, pegin_amount);
         builder.fee_absolute(transparent_fee);
-        let (psbt, mw_tx) = builder.finish_mweb_pegin()?;
-        Ok(PreparedMwebPegin { psbt, mw_tx, pegin })
+        let mut psbt = builder.finish()?;
+        // Merge signed MWEB maps onto the transparent PSBT (no sidecar mw_tx).
+        psbt.mweb_tx_offset = funded.psbt.mweb_tx_offset;
+        psbt.mweb_stealth_offset = funded.psbt.mweb_stealth_offset;
+        psbt.mweb_kernels = funded.psbt.mweb_kernels;
+        psbt.mweb_inputs = funded.psbt.mweb_inputs;
+        psbt.mweb_outputs = funded.psbt.mweb_outputs;
+        Ok(PreparedMwebPegin {
+            psbt,
+            kernel_id,
+            pegin_amount,
+            outputs: funded.outputs,
+        })
     }
 
     /// Fund an MWEB→MWEB spend (maps only, no `mw_tx`) from spendable coins.
