@@ -35,16 +35,14 @@ use bdk_mweb::mweb_sync::{
     ReadyNotifier, SyncNotifier, SyncState, FINE_WINDOW, FINE_WINDOW_FAST,
 };
 use bdk_mweb::tx_builder::CHANGE_ADDRESS_INDEX;
-use bdk_mweb::{
-    scan_litecoin_tx_at, AddressBook, MWEB_PEGIN_MATURITY, DEFAULT_GAP_LIMIT,
-};
+use bdk_mweb::{scan_litecoin_tx_at, AddressBook, DEFAULT_GAP_LIMIT, MWEB_PEGIN_MATURITY};
 use bdk_wallet::bitcoin::bip32::Xpriv;
 use bdk_wallet::bitcoin::consensus::encode::{deserialize, serialize};
 use bdk_wallet::bitcoin::hex::{DisplayHex, FromHex};
 use bdk_wallet::bitcoin::key::Secp256k1;
 use bdk_wallet::bitcoin::{Address, Amount, Network, NetworkKind, Transaction};
-use bdk_wallet::template::Bip84;
 use bdk_wallet::rusqlite::Connection;
+use bdk_wallet::template::Bip84;
 use bdk_wallet::{
     extract_prepared_mweb_pegin, KeychainKind, MwebStore, PersistedWallet, SignOptions, Wallet,
 };
@@ -218,8 +216,7 @@ fn main() -> anyhow::Result<()> {
                 &secp,
             )?;
             let spent_ids: Vec<_> = funded.spent_coins.iter().map(|c| c.output_id).collect();
-            let (tx, change) =
-                wallet.sign_and_extract_funded_mweb(&mut funded, &keys, &secp)?;
+            let (tx, change) = wallet.sign_and_extract_funded_mweb(&mut funded, &keys, &secp)?;
             let txid = broadcast_tx(&client, &tx)?;
             let wtxid = tx.compute_wtxid();
             println!("Broadcast MWEB send wtxid={wtxid} (explorer txid unreliable for pure MWEB)");
@@ -385,15 +382,12 @@ fn main() -> anyhow::Result<()> {
                 }
                 let tip_before = tip_height;
                 println!("Waiting for tip > {tip_before} (poll {poll_secs}s)…");
-                let mut tip_wait = PollingTipNotifier::new(
-                    tip_before,
-                    Duration::from_secs(poll_secs),
-                    || {
+                let mut tip_wait =
+                    PollingTipNotifier::new(tip_before, Duration::from_secs(poll_secs), || {
                         client
                             .get_height()
                             .map_err(|e| bdk_mweb::Error::Crypto(format!("esplora tip: {e}")))
-                    },
-                );
+                    });
                 tip_wait.wait_tip_changed(tip_before)?;
                 println!("tip advanced to {}", tip_wait.tip_height);
             }
@@ -401,14 +395,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::ScanTx { hex, height } => {
             let raw = Vec::<u8>::from_hex(hex.trim())?;
             let tx: Transaction = deserialize(&raw)?;
-            let found = scan_litecoin_tx_at(
-                &keys,
-                &book,
-                &tx,
-                store.db_mut(),
-                &secp,
-                height,
-            )?;
+            let found = scan_litecoin_tx_at(&keys, &book, &tx, store.db_mut(), &secp, height)?;
             store.persist_file_store(&mut file_store)?;
             println!("scanned txid={} found={}", tx.compute_txid(), found.len());
             for c in &found {
@@ -448,8 +435,7 @@ fn main() -> anyhow::Result<()> {
                 &secp,
             )?;
             let spent_ids: Vec<_> = funded.spent_coins.iter().map(|c| c.output_id).collect();
-            let (tx, change) =
-                wallet.sign_and_extract_funded_mweb(&mut funded, &keys, &secp)?;
+            let (tx, change) = wallet.sign_and_extract_funded_mweb(&mut funded, &keys, &secp)?;
             let txid = broadcast_tx(&client, &tx)?;
             let wtxid = tx.compute_wtxid();
             println!("Broadcast peg-out wtxid={wtxid}");
@@ -547,7 +533,9 @@ fn load_master_xprv() -> anyhow::Result<Xpriv> {
     bail!("Master xprv not found in {SECRET_PATH}");
 }
 
-fn load_or_create_mweb_keys(secp: &Secp256k1<bitcoin::secp256k1::All>) -> anyhow::Result<MasterKeys> {
+fn load_or_create_mweb_keys(
+    secp: &Secp256k1<bitcoin::secp256k1::All>,
+) -> anyhow::Result<MasterKeys> {
     let path = PathBuf::from(MWEB_SECRET_PATH);
     if path.exists() {
         let text = fs::read_to_string(&path)?;
@@ -566,12 +554,7 @@ fn load_or_create_mweb_keys(secp: &Secp256k1<bitcoin::secp256k1::All>) -> anyhow
     }
     let mut seed = [0u8; 32];
     rand::thread_rng().fill_bytes(&mut seed);
-    let keys = MasterKeys::from_seed(
-        &seed,
-        Network::Bitcoin,
-        MasterKeyScheme::LitecoinCore,
-        secp,
-    )?;
+    let keys = MasterKeys::from_seed(&seed, Network::Bitcoin, MasterKeyScheme::LitecoinCore, secp)?;
     fs::write(
         &path,
         format!(
@@ -724,9 +707,7 @@ fn broadcast_tx(
         Err(e) => {
             eprintln!("Esplora broadcast failed: {e}");
             if std::env::var_os("LITECOIN_RPC_URL").is_none() {
-                bail!(
-                    "Esplora rejected tx; set LITECOIN_RPC_URL for sendrawtransaction fallback"
-                );
+                bail!("Esplora rejected tx; set LITECOIN_RPC_URL for sendrawtransaction fallback");
             }
         }
     }
@@ -752,10 +733,7 @@ fn rpc_sendrawtransaction(tx_hex: &str) -> anyhow::Result<()> {
     if !user.is_empty() {
         req = req.with_header(
             "Authorization",
-            format!(
-                "Basic {}",
-                base64_encode(&format!("{user}:{pass}"))
-            ),
+            format!("Basic {}", base64_encode(&format!("{user}:{pass}"))),
         );
     }
     let resp = req.send().context("RPC HTTP")?;

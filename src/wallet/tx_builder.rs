@@ -857,10 +857,7 @@ impl<Cs: CoinSelectionAlgorithm> TxBuilder<'_, Cs> {
     since = "2.3.0",
     note = "use extract_finished_mweb_tx / extract_pegin_with_mweb_psbt (MwebPsbt) instead"
 )]
-pub fn attach_mweb_tx(
-    tx: &mut Transaction,
-    mw_tx: bitcoin::blockdata::mimblewimble::Transaction,
-) {
+pub fn attach_mweb_tx(tx: &mut Transaction, mw_tx: bitcoin::blockdata::mimblewimble::Transaction) {
     tx.mw_tx = Some(mw_tx);
 }
 

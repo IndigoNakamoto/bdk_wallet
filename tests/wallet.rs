@@ -1861,9 +1861,10 @@ fn test_returns_index_and_address() {
 #[test]
 fn test_sending_to_bip350_bech32m_address() {
     let (mut wallet, _) = get_funded_wallet_wpkh();
-    let addr = Address::from_str("tltc1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvseskjtjs8")
-        .unwrap()
-        .assume_checked();
+    let addr =
+        Address::from_str("tltc1pqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvseskjtjs8")
+            .unwrap()
+            .assume_checked();
     let mut builder = wallet.build_tx();
     builder.add_recipient(addr.script_pubkey(), Amount::from_sat(45_000));
     builder.finish().unwrap();

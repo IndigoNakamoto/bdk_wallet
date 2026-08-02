@@ -19,7 +19,7 @@ use bdk_mweb::keys::{MasterKeyScheme, MasterKeys};
 use bdk_mweb::lip0006::VerifyMode;
 use bdk_mweb::lip0006_tcp::TcpMwebPeer;
 use bdk_mweb::tx_builder::CHANGE_ADDRESS_INDEX;
-use bdk_mweb::{AddressBook, MWEB_PEGIN_MATURITY, DEFAULT_GAP_LIMIT};
+use bdk_mweb::{AddressBook, DEFAULT_GAP_LIMIT, MWEB_PEGIN_MATURITY};
 use bdk_testenv::try_node_from_env;
 use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
@@ -39,7 +39,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let seed = <Vec<u8>>::from_hex(SEED_HEX)?;
     let secp = Secp256k1::new();
-    let keys = MasterKeys::from_seed(&seed, Network::Regtest, MasterKeyScheme::LitecoinCore, &secp)?;
+    let keys = MasterKeys::from_seed(
+        &seed,
+        Network::Regtest,
+        MasterKeyScheme::LitecoinCore,
+        &secp,
+    )?;
     let book = AddressBook::from_keys(&keys, DEFAULT_GAP_LIMIT, &secp)?;
 
     let (desc, change_desc) = get_test_wpkh_and_change_desc();

@@ -49,7 +49,8 @@ fn main() -> Result<(), anyhow::Error> {
     let config = electrum_client::ConfigBuilder::new()
         .validate_domain(false)
         .build();
-    let client = BdkElectrumClient::new(electrum_client::Client::from_config(ELECTRUM_URL, config)?);
+    let client =
+        BdkElectrumClient::new(electrum_client::Client::from_config(ELECTRUM_URL, config)?);
 
     // Populate the electrum client's transaction cache so it doesn't redownload transaction we
     // already have.

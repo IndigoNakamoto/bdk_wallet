@@ -87,8 +87,7 @@ pub use error::{LoadError, LoadMismatch};
 pub use event::*;
 #[cfg(feature = "mweb")]
 pub use mweb::{
-    network_kind, select_mweb_coins, CombinedBalance, MwebFacadeError, MwebStore,
-    PreparedMwebPegin,
+    network_kind, select_mweb_coins, CombinedBalance, MwebFacadeError, MwebStore, PreparedMwebPegin,
 };
 pub use params::*;
 pub use persisted::*;
@@ -374,7 +373,10 @@ impl Wallet {
             params.use_spk_cache,
         )?;
 
-        let canonical_view = chain.canonical_view(tx_graph.graph(), chain.tip().block_id(), CanonicalParams::default(),
+        let canonical_view = chain.canonical_view(
+            tx_graph.graph(),
+            chain.tip().block_id(),
+            CanonicalParams::default(),
         );
 
         Ok(Wallet {
@@ -585,7 +587,10 @@ impl Wallet {
         )
         .map_err(LoadError::Descriptor)?;
 
-        let canonical_view = chain.canonical_view(tx_graph.graph(), chain.tip().block_id(), CanonicalParams::default(),
+        let canonical_view = chain.canonical_view(
+            tx_graph.graph(),
+            chain.tip().block_id(),
+            CanonicalParams::default(),
         );
 
         Ok(Some(Wallet {
@@ -836,11 +841,8 @@ impl Wallet {
     ///
     /// Note, the result of this call is not stored anywhere.
     pub fn canonical_view_with_params(&self, params: CanonicalParams) -> CanonicalView {
-        self.chain.canonical_view(
-            self.tx_graph.graph(),
-            self.chain.tip().block_id(),
-            params,
-        )
+        self.chain
+            .canonical_view(self.tx_graph.graph(), self.chain.tip().block_id(), params)
     }
 
     /// Update the wallet's [`CanonicalView`] of transactions.

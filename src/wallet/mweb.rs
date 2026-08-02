@@ -208,9 +208,7 @@ impl MwebStore {
         keys: &MasterKeys,
         book: &bdk_mweb::AddressBook,
         secp: &Secp256k1<All>,
-        checkpoint: Option<
-            &mut dyn FnMut(&bdk_mweb::mweb_sync::SyncState, &mut MwebCoinDatabase),
-        >,
+        checkpoint: Option<&mut dyn FnMut(&bdk_mweb::mweb_sync::SyncState, &mut MwebCoinDatabase)>,
     ) -> Result<bdk_mweb::lip0006::SyncResult, bdk_mweb::Error>
     where
         P: bdk_mweb::mweb_sync::BlockHeaderProvider,
@@ -251,7 +249,15 @@ impl MwebStore {
         N: bdk_mweb::mweb_sync::SyncNotifier,
     {
         syncer.run_once_with_pool(
-            headers, notifier, pool, network, state, keys, book, &mut self.db, secp,
+            headers,
+            notifier,
+            pool,
+            network,
+            state,
+            keys,
+            book,
+            &mut self.db,
+            secp,
         )
     }
 }
@@ -341,7 +347,10 @@ pub fn network_kind(network: Network) -> NetworkKind {
 ///
 /// Prefers a single coin that covers `needed` (smallest such coin). Otherwise
 /// selects largest-first until the sum covers `needed`.
-pub fn select_mweb_coins(unspent: &[MwebCoin], needed: u64) -> Result<Vec<MwebCoin>, MwebFacadeError> {
+pub fn select_mweb_coins(
+    unspent: &[MwebCoin],
+    needed: u64,
+) -> Result<Vec<MwebCoin>, MwebFacadeError> {
     if unspent.is_empty() {
         return Err(MwebFacadeError::NoMwebCoins);
     }
@@ -522,16 +531,7 @@ impl Wallet {
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
         #[allow(deprecated)]
-        self.build_mweb_send_with(
-            db,
-            keys,
-            recipient,
-            amount,
-            fee,
-            change_index,
-            false,
-            secp,
-        )
+        self.build_mweb_send_with(db, keys, recipient, amount, fee, change_index, false, secp)
     }
 
     /// Build an MWEB→MWEB spend; set `include_unconfirmed` to also spend pending coins.

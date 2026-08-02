@@ -4,9 +4,7 @@
 
 use bdk_mweb::keys::{MasterKeyScheme, MasterKeys};
 use bdk_mweb::tx_builder::CHANGE_ADDRESS_INDEX;
-use bdk_mweb::{
-    scan_litecoin_tx_at, AddressBook, MwebCoin, MwebCoinDatabase, DEFAULT_GAP_LIMIT,
-};
+use bdk_mweb::{scan_litecoin_tx_at, AddressBook, MwebCoin, MwebCoinDatabase, DEFAULT_GAP_LIMIT};
 use bdk_testenv::{try_node_from_env, MWEB_PEGIN_MATURITY};
 use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
@@ -62,9 +60,13 @@ fn prepare_mweb_pegin_builds_psbt_and_body() {
     let (mut wallet, _) = get_funded_wallet_wpkh();
     let seed = <Vec<u8>>::from_hex(SEED_HEX).unwrap();
     let secp = Secp256k1::new();
-    let keys =
-        MasterKeys::from_seed(&seed, Network::Regtest, MasterKeyScheme::LitecoinCore, &secp)
-            .unwrap();
+    let keys = MasterKeys::from_seed(
+        &seed,
+        Network::Regtest,
+        MasterKeyScheme::LitecoinCore,
+        &secp,
+    )
+    .unwrap();
 
     let prepared = wallet
         .prepare_mweb_pegin(
@@ -96,9 +98,13 @@ fn wallet_facade_pegin_pegout_roundtrip() {
 
     let seed = <Vec<u8>>::from_hex(SEED_HEX).unwrap();
     let secp = Secp256k1::new();
-    let keys =
-        MasterKeys::from_seed(&seed, Network::Regtest, MasterKeyScheme::LitecoinCore, &secp)
-            .unwrap();
+    let keys = MasterKeys::from_seed(
+        &seed,
+        Network::Regtest,
+        MasterKeyScheme::LitecoinCore,
+        &secp,
+    )
+    .unwrap();
     let book = AddressBook::from_keys(&keys, DEFAULT_GAP_LIMIT, &secp).unwrap();
 
     let (desc, change_desc) = get_test_wpkh_and_change_desc();
@@ -151,9 +157,7 @@ fn wallet_facade_pegin_pegout_roundtrip() {
         .expect("sign");
     assert!(signed);
     let tx = extract_prepared_mweb_pegin(&prepared.psbt).expect("mweb psbt extract");
-    env.rpc
-        .send_raw_transaction(&tx)
-        .expect("broadcast peg-in");
+    env.rpc.send_raw_transaction(&tx).expect("broadcast peg-in");
 
     // Block 432 activates MWEB and requires a peg-in in the mempool.
     env.mine_mweb_activation(&mining).expect("activate");
@@ -176,9 +180,12 @@ fn wallet_facade_pegin_pegout_roundtrip() {
         scan_litecoin_tx_at(&keys, &book, &tx, &mut db, &secp, Some(PEGIN_HEIGHT)).expect("scan");
     let receive_amt = pegin_amount.to_sat() - mweb_fee.to_sat();
     assert_eq!(db.balance(), receive_amt);
-    assert!(found.iter().any(|c| c.address_index == 2 && c.amount == receive_amt));
+    assert!(found
+        .iter()
+        .any(|c| c.address_index == 2 && c.amount == receive_amt));
     assert!(
-        db.unspent().any(|c| c.is_pegin && c.is_spendable(tip, MWEB_PEGIN_MATURITY)),
+        db.unspent()
+            .any(|c| c.is_pegin && c.is_spendable(tip, MWEB_PEGIN_MATURITY)),
         "pegin should be mature at tip={tip}"
     );
 
@@ -230,9 +237,10 @@ fn wallet_facade_pegin_pegout_roundtrip() {
     let hogex = tip_block.txdata.last().expect("hogex");
     assert!(hogex.is_hog_ex);
     assert!(
-        hogex.output.iter().any(|o| {
-            o.value == pegout_amt && o.script_pubkey == pegout_addr.script_pubkey()
-        }),
+        hogex
+            .output
+            .iter()
+            .any(|o| { o.value == pegout_amt && o.script_pubkey == pegout_addr.script_pubkey() }),
         "HogEx must credit peg-out"
     );
     let received = env
@@ -246,5 +254,4 @@ fn wallet_facade_pegin_pegout_roundtrip() {
         Amount::from_btc(received.as_f64().unwrap()).unwrap(),
         pegout_amt
     );
-
 }

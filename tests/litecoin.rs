@@ -12,8 +12,8 @@ use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::secp256k1::PublicKey;
 use bdk_wallet::bitcoin::{Address, AddressType, Amount, Network, NetworkKind, Transaction};
 use bdk_wallet::chain::TxUpdate;
-use bdk_wallet::test_utils::get_funded_wallet_wpkh;
 use bdk_wallet::error::CreateTxError;
+use bdk_wallet::test_utils::get_funded_wallet_wpkh;
 use bdk_wallet::{KeychainKind, Update, Wallet};
 
 /// Real mainnet HogEx transaction from block 3,149,263.
@@ -112,14 +112,12 @@ fn hogex_pegout_credits_wallet_but_hogaddr_does_not() {
 fn sending_to_mweb_address_is_rejected() {
     let (mut wallet, _) = get_funded_wallet_wpkh();
 
-    let scan = PublicKey::from_str(
-        "0339a36013301597daef41fbe593a02cc513d0b55527ec2df1050e2e8ff49c85c2",
-    )
-    .unwrap();
-    let spend = PublicKey::from_str(
-        "035a784662a4a20a65bf6aab9ae98a6c068a81c52e4b032c0fb5400c706cfccc56",
-    )
-    .unwrap();
+    let scan =
+        PublicKey::from_str("0339a36013301597daef41fbe593a02cc513d0b55527ec2df1050e2e8ff49c85c2")
+            .unwrap();
+    let spend =
+        PublicKey::from_str("035a784662a4a20a65bf6aab9ae98a6c068a81c52e4b032c0fb5400c706cfccc56")
+            .unwrap();
     let mweb = Address::mweb(scan, spend, NetworkKind::Main);
     assert_eq!(mweb.address_type(), Some(AddressType::Mweb));
     assert!(
