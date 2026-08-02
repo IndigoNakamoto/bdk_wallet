@@ -54,6 +54,75 @@ impl CombinedBalance {
     }
 }
 
+/// The wallet-identity half of an MWEB scan: whose coins to look for, and the
+/// curve context to check ownership with.
+///
+/// These three are never useful apart — a scan needs all of them or none — so
+/// they travel as one value rather than as three parameters on every sync
+/// entry point.
+#[derive(Clone, Copy)]
+pub struct MwebScanContext<'a> {
+    /// Master keys that decide whether an output belongs to this wallet.
+    pub keys: &'a MasterKeys,
+    /// Derived addresses to recognize during scanning.
+    pub book: &'a bdk_mweb::AddressBook,
+    /// Secp context for the ownership arithmetic.
+    pub secp: &'a Secp256k1<All>,
+}
+
+/// What drives one differential sync pass, including the state it advances.
+///
+/// `state` and `notifier` are borrowed mutably: a pass reads where the last one
+/// stopped and leaves its own progress behind, which is what makes a sync
+/// resumable.
+pub struct MwebSyncDrivers<'a, P, N> {
+    /// Batch width, verify mode, and progress sink for the pass.
+    pub syncer: &'a bdk_mweb::mweb_sync::MwebSyncer,
+    /// Supplies the block hashes and heights used to date coins.
+    pub headers: &'a P,
+    /// Notified as the pass reaches usable checkpoints.
+    pub notifier: &'a mut N,
+    /// Leafset and download cursor carried across passes; updated in place.
+    pub state: &'a mut bdk_mweb::mweb_sync::SyncState,
+}
+
+/// Mid-download callback for [`MwebStore::sync_differential_checkpointed`].
+///
+/// Invoked with the state as of the last completed batch, so a caller can
+/// persist partway through and resume there after an interruption.
+pub type MwebCheckpoint<'a> =
+    &'a mut dyn FnMut(&bdk_mweb::mweb_sync::SyncState, &mut MwebCoinDatabase);
+
+/// Value, fee, and change placement for an MWEB spend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MwebSpendParams {
+    /// Value delivered to the recipient.
+    pub amount: Amount,
+    /// Fee paid to the network.
+    pub fee: Amount,
+    /// Address index the change output is derived at.
+    pub change_index: u32,
+}
+
+impl MwebSpendParams {
+    /// Build a spend paying `amount` with `fee`, changing to `change_index`.
+    pub fn new(amount: Amount, fee: Amount, change_index: u32) -> Self {
+        Self {
+            amount,
+            fee,
+            change_index,
+        }
+    }
+
+    /// Total value that must be covered by the selected coins.
+    ///
+    /// Saturating: a caller-supplied amount and fee that overflow together
+    /// should fail coin selection, not wrap into a trivially satisfiable target.
+    pub fn needed(&self) -> u64 {
+        self.amount.to_sat().saturating_add(self.fee.to_sat())
+    }
+}
+
 /// Parallel MWEB coin store owned beside a [`Wallet`] (not part of `Wallet::ChangeSet`).
 #[derive(Debug, Default, Clone)]
 pub struct MwebStore {
@@ -156,19 +225,17 @@ impl MwebStore {
     pub fn sync_at_tip<S: bdk_mweb::lip0006::MwebUtxoSource>(
         &mut self,
         source: &mut S,
-        keys: &MasterKeys,
-        book: &bdk_mweb::AddressBook,
+        ctx: MwebScanContext<'_>,
         tip_hash: bitcoin::BlockHash,
         tip_height: u32,
         verify: bdk_mweb::lip0006::VerifyMode,
-        secp: &Secp256k1<All>,
     ) -> Result<bdk_mweb::lip0006::SyncResult, bdk_mweb::Error> {
         bdk_mweb::lip0006::sync_mweb_at_tip(
             source,
-            keys,
-            book,
+            ctx.keys,
+            ctx.book,
             &mut self.db,
-            secp,
+            ctx.secp,
             tip_hash,
             tip_height,
             verify,
@@ -178,52 +245,46 @@ impl MwebStore {
     /// mwebsync-shaped differential sync (leafset diff + UTXO dating).
     pub fn sync_differential<P, N, S>(
         &mut self,
-        syncer: &bdk_mweb::mweb_sync::MwebSyncer,
-        headers: &P,
-        notifier: &mut N,
+        drivers: MwebSyncDrivers<'_, P, N>,
         source: &mut S,
-        state: &mut bdk_mweb::mweb_sync::SyncState,
-        keys: &MasterKeys,
-        book: &bdk_mweb::AddressBook,
-        secp: &Secp256k1<All>,
+        ctx: MwebScanContext<'_>,
     ) -> Result<bdk_mweb::lip0006::SyncResult, bdk_mweb::Error>
     where
         P: bdk_mweb::mweb_sync::BlockHeaderProvider,
         N: bdk_mweb::mweb_sync::SyncNotifier,
         S: bdk_mweb::lip0006::MwebUtxoSource,
     {
-        self.sync_differential_checkpointed(
-            syncer, headers, notifier, source, state, keys, book, secp, None,
-        )
+        self.sync_differential_checkpointed(drivers, source, ctx, None)
     }
 
     /// [`Self::sync_differential`] with an optional mid-download checkpoint callback.
     pub fn sync_differential_checkpointed<P, N, S>(
         &mut self,
-        syncer: &bdk_mweb::mweb_sync::MwebSyncer,
-        headers: &P,
-        notifier: &mut N,
+        drivers: MwebSyncDrivers<'_, P, N>,
         source: &mut S,
-        state: &mut bdk_mweb::mweb_sync::SyncState,
-        keys: &MasterKeys,
-        book: &bdk_mweb::AddressBook,
-        secp: &Secp256k1<All>,
-        checkpoint: Option<&mut dyn FnMut(&bdk_mweb::mweb_sync::SyncState, &mut MwebCoinDatabase)>,
+        ctx: MwebScanContext<'_>,
+        checkpoint: Option<MwebCheckpoint<'_>>,
     ) -> Result<bdk_mweb::lip0006::SyncResult, bdk_mweb::Error>
     where
         P: bdk_mweb::mweb_sync::BlockHeaderProvider,
         N: bdk_mweb::mweb_sync::SyncNotifier,
         S: bdk_mweb::lip0006::MwebUtxoSource,
     {
+        let MwebSyncDrivers {
+            syncer,
+            headers,
+            notifier,
+            state,
+        } = drivers;
         syncer.run_once(
             headers,
             notifier,
             source,
             state,
-            keys,
-            book,
+            ctx.keys,
+            ctx.book,
             &mut self.db,
-            secp,
+            ctx.secp,
             checkpoint,
         )
     }
@@ -234,30 +295,31 @@ impl MwebStore {
     /// [`Self::sync_differential_checkpointed`] from the application (see `mainnet_mweb`).
     pub fn sync_differential_pooled<P, N>(
         &mut self,
-        syncer: &bdk_mweb::mweb_sync::MwebSyncer,
-        headers: &P,
-        notifier: &mut N,
+        drivers: MwebSyncDrivers<'_, P, N>,
         pool: &mut bdk_mweb::mweb_sync::PeerPool,
         network: Network,
-        state: &mut bdk_mweb::mweb_sync::SyncState,
-        keys: &MasterKeys,
-        book: &bdk_mweb::AddressBook,
-        secp: &Secp256k1<All>,
+        ctx: MwebScanContext<'_>,
     ) -> Result<bdk_mweb::lip0006::SyncResult, bdk_mweb::Error>
     where
         P: bdk_mweb::mweb_sync::BlockHeaderProvider,
         N: bdk_mweb::mweb_sync::SyncNotifier,
     {
+        let MwebSyncDrivers {
+            syncer,
+            headers,
+            notifier,
+            state,
+        } = drivers;
         syncer.run_once_with_pool(
             headers,
             notifier,
             pool,
             network,
             state,
-            keys,
-            book,
+            ctx.keys,
+            ctx.book,
             &mut self.db,
-            secp,
+            ctx.secp,
         )
     }
 }
@@ -478,22 +540,19 @@ impl Wallet {
         db: &MwebCoinDatabase,
         keys: &MasterKeys,
         recipient: Address,
-        amount: Amount,
-        fee: Amount,
-        change_index: u32,
+        params: MwebSpendParams,
         secp: &Secp256k1<All>,
     ) -> Result<FundedMwebPsbt, MwebFacadeError> {
         let tip = self.latest_checkpoint().height();
         let pool = db.unspent_spendable(tip, MWEB_PEGIN_MATURITY);
-        let needed = amount.to_sat().saturating_add(fee.to_sat());
-        let selected = select_mweb_coins(&pool, needed)?;
+        let selected = select_mweb_coins(&pool, params.needed())?;
         Ok(fund_mweb_spend(
             selected,
-            vec![(recipient, amount.to_sat())],
+            vec![(recipient, params.amount.to_sat())],
             vec![],
-            fee.to_sat(),
+            params.fee.to_sat(),
             keys,
-            change_index,
+            params.change_index,
             network_kind(self.network()),
             secp,
         )?)
@@ -525,13 +584,11 @@ impl Wallet {
         db: &MwebCoinDatabase,
         keys: &MasterKeys,
         recipient: Address,
-        amount: Amount,
-        fee: Amount,
-        change_index: u32,
+        params: MwebSpendParams,
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
         #[allow(deprecated)]
-        self.build_mweb_send_with(db, keys, recipient, amount, fee, change_index, false, secp)
+        self.build_mweb_send_with(db, keys, recipient, params, false, secp)
     }
 
     /// Build an MWEB→MWEB spend; set `include_unconfirmed` to also spend pending coins.
@@ -539,15 +596,12 @@ impl Wallet {
         since = "3.1.0",
         note = "use fund_mweb_send + sign_and_extract_funded_mweb instead"
     )]
-    #[allow(clippy::too_many_arguments)]
     pub fn build_mweb_send_with(
         &self,
         db: &MwebCoinDatabase,
         keys: &MasterKeys,
         recipient: Address,
-        amount: Amount,
-        fee: Amount,
-        change_index: u32,
+        params: MwebSpendParams,
         include_unconfirmed: bool,
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
@@ -558,16 +612,20 @@ impl Wallet {
             // Spendable = confirmed + peg-in maturity.
             db.unspent_spendable(tip, MWEB_PEGIN_MATURITY)
         };
-        let needed = amount.to_sat().saturating_add(fee.to_sat());
-        let selected = select_mweb_coins(&pool, needed)?;
+        let selected = select_mweb_coins(&pool, params.needed())?;
         let mut builder = MwebTxBuilder::new();
         for coin in selected {
             builder = builder.add_input(coin);
         }
         builder = builder
-            .add_recipient(recipient, amount.to_sat())
-            .fee(fee.to_sat());
-        Ok(builder.finish(keys, change_index, network_kind(self.network()), secp)?)
+            .add_recipient(recipient, params.amount.to_sat())
+            .fee(params.fee.to_sat());
+        Ok(builder.finish(
+            keys,
+            params.change_index,
+            network_kind(self.network()),
+            secp,
+        )?)
     }
 
     /// Fund a peg-out (maps only) from spendable coins.
@@ -576,22 +634,19 @@ impl Wallet {
         db: &MwebCoinDatabase,
         keys: &MasterKeys,
         script_pubkey: ScriptBuf,
-        amount: Amount,
-        fee: Amount,
-        change_index: u32,
+        params: MwebSpendParams,
         secp: &Secp256k1<All>,
     ) -> Result<FundedMwebPsbt, MwebFacadeError> {
         let tip = self.latest_checkpoint().height();
         let pool = db.unspent_spendable(tip, MWEB_PEGIN_MATURITY);
-        let needed = amount.to_sat().saturating_add(fee.to_sat());
-        let selected = select_mweb_coins(&pool, needed)?;
+        let selected = select_mweb_coins(&pool, params.needed())?;
         Ok(fund_mweb_spend(
             selected,
             vec![],
-            vec![(script_pubkey, amount.to_sat())],
-            fee.to_sat(),
+            vec![(script_pubkey, params.amount.to_sat())],
+            params.fee.to_sat(),
             keys,
-            change_index,
+            params.change_index,
             network_kind(self.network()),
             secp,
         )?)
@@ -609,22 +664,11 @@ impl Wallet {
         db: &MwebCoinDatabase,
         keys: &MasterKeys,
         script_pubkey: ScriptBuf,
-        amount: Amount,
-        fee: Amount,
-        change_index: u32,
+        params: MwebSpendParams,
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
         #[allow(deprecated)]
-        self.build_mweb_pegout_with(
-            db,
-            keys,
-            script_pubkey,
-            amount,
-            fee,
-            change_index,
-            false,
-            secp,
-        )
+        self.build_mweb_pegout_with(db, keys, script_pubkey, params, false, secp)
     }
 
     /// Peg-out helper; set `include_unconfirmed` to also spend pending coins.
@@ -632,15 +676,12 @@ impl Wallet {
         since = "3.1.0",
         note = "use fund_mweb_pegout + sign_and_extract_funded_mweb instead"
     )]
-    #[allow(clippy::too_many_arguments)]
     pub fn build_mweb_pegout_with(
         &self,
         db: &MwebCoinDatabase,
         keys: &MasterKeys,
         script_pubkey: ScriptBuf,
-        amount: Amount,
-        fee: Amount,
-        change_index: u32,
+        params: MwebSpendParams,
         include_unconfirmed: bool,
         secp: &Secp256k1<All>,
     ) -> Result<FinishedMwebTx, MwebFacadeError> {
@@ -650,16 +691,20 @@ impl Wallet {
         } else {
             db.unspent_spendable(tip, MWEB_PEGIN_MATURITY)
         };
-        let needed = amount.to_sat().saturating_add(fee.to_sat());
-        let selected = select_mweb_coins(&pool, needed)?;
+        let selected = select_mweb_coins(&pool, params.needed())?;
         let mut builder = MwebTxBuilder::new();
         for coin in selected {
             builder = builder.add_input(coin);
         }
         builder = builder
-            .add_pegout(script_pubkey, amount.to_sat())
-            .fee(fee.to_sat());
-        Ok(builder.finish(keys, change_index, network_kind(self.network()), secp)?)
+            .add_pegout(script_pubkey, params.amount.to_sat())
+            .fee(params.fee.to_sat());
+        Ok(builder.finish(
+            keys,
+            params.change_index,
+            network_kind(self.network()),
+            secp,
+        )?)
     }
 
     /// Convenience: peg-out with Core change index (`0`).
@@ -681,9 +726,7 @@ impl Wallet {
             db,
             keys,
             script_pubkey,
-            amount,
-            fee,
-            CHANGE_ADDRESS_INDEX,
+            MwebSpendParams::new(amount, fee, CHANGE_ADDRESS_INDEX),
             secp,
         )
     }

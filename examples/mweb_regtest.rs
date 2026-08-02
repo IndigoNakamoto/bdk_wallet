@@ -25,7 +25,10 @@ use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
 use bdk_wallet::bitcoin::{Amount, Network};
 use bdk_wallet::test_utils::get_test_wpkh_and_change_desc;
-use bdk_wallet::{extract_prepared_mweb_pegin, KeychainKind, MwebStore, SignOptions, Wallet};
+use bdk_wallet::{
+    extract_prepared_mweb_pegin, KeychainKind, MwebScanContext, MwebSpendParams, MwebStore,
+    SignOptions, Wallet,
+};
 
 const SEED_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 const MWEB_MAGIC: &[u8] = b"bdk_mweb_v2";
@@ -105,12 +108,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut peer = TcpMwebPeer::connect(env.p2p_addr(), Network::Regtest)?;
     let result = store.sync_at_tip(
         &mut peer,
-        &keys,
-        &book,
+        MwebScanContext {
+            keys: &keys,
+            book: &book,
+            secp: &secp,
+        },
         tip_hash,
         tip_height,
         VerifyMode::HeaderAndPmmr,
-        &secp,
     )?;
     // Peg-in outputs need maturity metadata (LIP UTXO batches omit kernels).
     for coin in &result.found {
@@ -138,9 +143,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         store.db(),
         &keys,
         pegout_addr.script_pubkey(),
-        Amount::from_btc(0.3)?,
-        Amount::from_sat(50_000),
-        CHANGE_ADDRESS_INDEX,
+        MwebSpendParams::new(
+            Amount::from_btc(0.3)?,
+            Amount::from_sat(50_000),
+            CHANGE_ADDRESS_INDEX,
+        ),
         &secp,
     )?;
     let (tx, _change) = wallet.sign_and_extract_funded_mweb(&mut funded, &keys, &secp)?;

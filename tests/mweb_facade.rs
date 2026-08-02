@@ -10,7 +10,7 @@ use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
 use bdk_wallet::bitcoin::{Amount, Network};
 use bdk_wallet::test_utils::{get_funded_wallet_wpkh, get_test_wpkh_and_change_desc};
-use bdk_wallet::{extract_prepared_mweb_pegin, KeychainKind, SignOptions, Wallet};
+use bdk_wallet::{extract_prepared_mweb_pegin, KeychainKind, MwebSpendParams, SignOptions, Wallet};
 
 const SEED_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
@@ -204,9 +204,7 @@ fn wallet_facade_pegin_pegout_roundtrip() {
             &db,
             &keys,
             pegout_addr.script_pubkey(),
-            pegout_amt,
-            pegout_fee,
-            CHANGE_ADDRESS_INDEX,
+            MwebSpendParams::new(pegout_amt, pegout_fee, CHANGE_ADDRESS_INDEX),
             &secp,
         )
         .expect("fund_mweb_pegout");

@@ -35,7 +35,9 @@ use bdk_mweb::mweb_sync::{
     ReadyNotifier, SyncNotifier, SyncState, FINE_WINDOW, FINE_WINDOW_FAST,
 };
 use bdk_mweb::tx_builder::CHANGE_ADDRESS_INDEX;
-use bdk_mweb::{scan_litecoin_tx_at, AddressBook, DEFAULT_GAP_LIMIT, MWEB_PEGIN_MATURITY};
+use bdk_mweb::{
+    scan_litecoin_tx_at, AddressBook, MwebCoinDatabase, DEFAULT_GAP_LIMIT, MWEB_PEGIN_MATURITY,
+};
 use bdk_wallet::bitcoin::bip32::Xpriv;
 use bdk_wallet::bitcoin::consensus::encode::{deserialize, serialize};
 use bdk_wallet::bitcoin::hex::{DisplayHex, FromHex};
@@ -44,7 +46,8 @@ use bdk_wallet::bitcoin::{Address, Amount, Network, NetworkKind, Transaction};
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::template::Bip84;
 use bdk_wallet::{
-    extract_prepared_mweb_pegin, KeychainKind, MwebStore, PersistedWallet, SignOptions, Wallet,
+    extract_prepared_mweb_pegin, KeychainKind, MwebScanContext, MwebSpendParams, MwebStore,
+    MwebSyncDrivers, PersistedWallet, SignOptions, Wallet,
 };
 use clap::{Parser, Subcommand};
 use rand::RngCore;
@@ -210,9 +213,7 @@ fn main() -> anyhow::Result<()> {
                 store.db(),
                 &keys,
                 dest,
-                send_amount,
-                Amount::from_sat(fee),
-                CHANGE_ADDRESS_INDEX,
+                MwebSpendParams::new(send_amount, Amount::from_sat(fee), CHANGE_ADDRESS_INDEX),
                 &secp,
             )?;
             let spent_ids: Vec<_> = funded.spent_coins.iter().map(|c| c.output_id).collect();
@@ -333,15 +334,19 @@ fn main() -> anyhow::Result<()> {
                 let result = pool
                     .with_failover(Network::Bitcoin, |peer| {
                         store.sync_differential_checkpointed(
-                            &syncer,
-                            &headers,
-                            &mut notifier,
+                            MwebSyncDrivers {
+                                syncer: &syncer,
+                                headers: &headers,
+                                notifier: &mut notifier,
+                                state: &mut state,
+                            },
                             peer,
-                            &mut state,
-                            &keys,
-                            &book,
-                            &secp,
-                            Some(&mut |state, db| {
+                            MwebScanContext {
+                                keys: &keys,
+                                book: &book,
+                                secp: &secp,
+                            },
+                            Some(&mut |state: &SyncState, db: &mut MwebCoinDatabase| {
                                 if let Err(e) = save_sync_state(state) {
                                     eprintln!("warn: checkpoint sync state: {e}");
                                 }
@@ -429,9 +434,7 @@ fn main() -> anyhow::Result<()> {
                 store.db(),
                 &keys,
                 dest_script,
-                peg_amount,
-                Amount::from_sat(fee),
-                CHANGE_ADDRESS_INDEX,
+                MwebSpendParams::new(peg_amount, Amount::from_sat(fee), CHANGE_ADDRESS_INDEX),
                 &secp,
             )?;
             let spent_ids: Vec<_> = funded.spent_coins.iter().map(|c| c.output_id).collect();
