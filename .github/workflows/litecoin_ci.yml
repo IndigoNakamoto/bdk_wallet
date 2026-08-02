@@ -1,0 +1,131 @@
+# Fork-specific CI for the litecoin branch.
+#
+# The inherited upstream workflows (cont_integration.yml and friends) check out
+# only this repository. That is fine upstream, where bdk_wallet depends on
+# published crates, but on this branch every dependency is a relative path out
+# of the repo, so those jobs cannot resolve the manifest and have never run
+# here. Rather than edit them — which would conflict on every upstream sync —
+# this workflow reassembles the tree from deps/pins.env and runs against it.
+#
+# Deliberately narrower than upstream's: no MSRV, no_std, or WASM matrix. Those
+# target a crate with no MWEB, no zkp, and no C dependencies, none of which
+# describes this branch.
+name: Litecoin CI
+
+on:
+  push:
+    branches:
+      - litecoin
+  pull_request:
+    branches:
+      - litecoin
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: Rust fmt, clippy, tests
+    runs-on: ubuntu-22.04
+
+    steps:
+      # The pins live in this repo, but this repo has to be checked out *inside*
+      # bdk, and checking out bdk would wipe a directory placed there first. So
+      # grab just the two files needed to plan the layout, then build it in
+      # dependency order.
+      - name: Read pins and toolchain
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          path: pins
+          sparse-checkout: |
+            deps/pins.env
+            rust-toolchain.toml
+          sparse-checkout-cone-mode: false
+
+      - name: Load sibling pins
+        id: pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          source pins/deps/pins.env
+          echo "bdk_repo=$BDK_REPO" >> "$GITHUB_OUTPUT"
+          echo "bdk_ref=$BDK_REF" >> "$GITHUB_OUTPUT"
+          echo "rust_litecoin_repo=$RUST_LITECOIN_REPO" >> "$GITHUB_OUTPUT"
+          echo "rust_litecoin_ref=$RUST_LITECOIN_REF" >> "$GITHUB_OUTPUT"
+
+      # Read rather than restated, so the workflow cannot drift from the
+      # toolchain the crate actually pins.
+      - name: Resolve pinned toolchain
+        id: toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' pins/rust-toolchain.toml)
+          test -n "$channel" || { echo "no channel in rust-toolchain.toml"; exit 1; }
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout bdk sibling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          repository: ${{ steps.pins.outputs.bdk_repo }}
+          ref: ${{ steps.pins.outputs.bdk_ref }}
+          path: bdk
+
+      - name: Checkout rust-litecoin sibling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          repository: ${{ steps.pins.outputs.rust_litecoin_repo }}
+          ref: ${{ steps.pins.outputs.rust_litecoin_ref }}
+          path: rust-litecoin
+
+      # bdk gitignores bdk_wallet, so this nests cleanly and is where the
+      # ../crates and ../../rust-litecoin paths resolve from.
+      - name: Checkout bdk_wallet into bdk
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          path: bdk/bdk_wallet
+
+      - name: Confirm the tree assembled
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in bdk/crates/chain bdk/crates/mweb rust-litecoin/litecoin bdk/bdk_wallet/Cargo.toml; do
+            test -e "$p" || { echo "missing $p — the path deps will not resolve"; exit 1; }
+          done
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch snapshot
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: clippy, rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: bdk/bdk_wallet -> target
+
+      # grin_secp256k1zkp and aws-lc-sys build C/C++ through cmake.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake clang
+
+      - name: Formatting
+        working-directory: bdk/bdk_wallet
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        working-directory: bdk/bdk_wallet
+        run: cargo clippy --all-features --all-targets -- -D warnings
+
+      # Node-backed MWEB tests skip themselves when no litecoind is reachable,
+      # so this is the pure-Rust suite. Regtest coverage lives in bdk's own
+      # workflow, which does provision a node.
+      - name: Tests
+        working-directory: bdk/bdk_wallet
+        run: cargo test --all-features
