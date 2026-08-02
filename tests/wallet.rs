@@ -538,11 +538,11 @@ fn test_create_tx_custom_fee_rate() {
     let mut builder = wallet.build_tx();
     builder
         .add_recipient(addr.script_pubkey(), Amount::from_sat(25_000))
-        .fee_rate(FeeRate::from_sat_per_vb_unchecked(5));
+        .fee_rate(FeeRate::from_sat_per_vb_u32(5));
     let psbt = builder.finish().unwrap();
     let fee = check_fee!(wallet, psbt);
 
-    assert_fee_rate!(psbt, fee, FeeRate::from_sat_per_vb_unchecked(5), @add_signature);
+    assert_fee_rate!(psbt, fee, FeeRate::from_sat_per_vb_u32(5), @add_signature);
 }
 
 #[test]
@@ -552,11 +552,11 @@ fn test_legacy_create_tx_custom_fee_rate() {
     let mut builder = wallet.build_tx();
     builder
         .add_recipient(addr.script_pubkey(), Amount::from_sat(25_000))
-        .fee_rate(FeeRate::from_sat_per_vb_unchecked(5));
+        .fee_rate(FeeRate::from_sat_per_vb_u32(5));
     let psbt = builder.finish().unwrap();
     let fee = check_fee!(wallet, psbt);
 
-    assert_fee_rate_legacy!(psbt, fee, FeeRate::from_sat_per_vb_unchecked(5), @add_signature);
+    assert_fee_rate_legacy!(psbt, fee, FeeRate::from_sat_per_vb_u32(5), @add_signature);
 }
 
 #[test]
@@ -711,7 +711,7 @@ fn test_create_tx_drain_to_dust_amount() {
     builder
         .drain_to(addr.script_pubkey())
         .drain_wallet()
-        .fee_rate(FeeRate::from_sat_per_vb_unchecked(454));
+        .fee_rate(FeeRate::from_sat_per_vb_u32(454));
     builder.finish().unwrap();
 }
 
@@ -2620,7 +2620,7 @@ fn test_fee_rate_sign_no_grinding_high_r() {
     // alright.
     let (mut wallet, _) = get_funded_wallet_single("wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)");
     let addr = wallet.next_unused_address(KeychainKind::External);
-    let fee_rate = FeeRate::from_sat_per_vb_unchecked(1);
+    let fee_rate = FeeRate::from_sat_per_vb_u32(1);
     let mut builder = wallet.build_tx();
     let mut data = PushBytesBuf::try_from(vec![0]).unwrap();
     builder
@@ -2687,7 +2687,7 @@ fn test_fee_rate_sign_grinding_low_r() {
     // signature is 70 bytes.
     let (mut wallet, _) = get_funded_wallet_single("wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)");
     let addr = wallet.next_unused_address(KeychainKind::External);
-    let fee_rate = FeeRate::from_sat_per_vb_unchecked(1);
+    let fee_rate = FeeRate::from_sat_per_vb_u32(1);
     let mut builder = wallet.build_tx();
     builder
         .drain_to(addr.script_pubkey())
