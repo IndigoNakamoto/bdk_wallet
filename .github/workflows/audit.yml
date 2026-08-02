@@ -6,6 +6,9 @@ name: Audit
 
 on:
   push:
+    # Excluded on litecoin: cargo-audit needs a resolvable manifest, and this
+    # bare checkout cannot produce one there. See litecoin_ci.yml.
+    branches-ignore: [litecoin]
     paths:
       # Run if workflow changes
       - '.github/workflows/audit.yml'

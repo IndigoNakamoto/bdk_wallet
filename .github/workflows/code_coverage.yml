@@ -4,7 +4,13 @@ name: Code Coverage
 # Runs on every push and pull request to track test coverage metrics.
 # Uploads coverage data to Codecov for tracking and produces an HTML report artifact for download.
 
-on: [push, pull_request]
+# Excluded on litecoin for the same reason as cont_integration.yml: a bare
+# checkout of this repo alone cannot resolve its path dependencies.
+on:
+  push:
+    branches-ignore: [litecoin]
+  pull_request:
+    branches-ignore: [litecoin]
 
 permissions:
   contents: read

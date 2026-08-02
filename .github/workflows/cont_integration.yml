@@ -1,4 +1,12 @@
-on: [push, pull_request]
+# The litecoin branch is excluded: its dependencies are relative paths into
+# sibling repos, so the bare checkout below cannot resolve the manifest and
+# every job here dies before it lints anything. litecoin_ci.yml reassembles
+# that tree and runs the equivalent checks against it.
+on:
+  push:
+    branches-ignore: [litecoin]
+  pull_request:
+    branches-ignore: [litecoin]
 
 # Main continuous integration workflow that runs build, test, and code quality checks.
 # Runs on every push and pull request, testing against both MSRV (1.85) and stable Rust.
