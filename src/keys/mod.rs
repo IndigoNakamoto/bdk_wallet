@@ -24,10 +24,9 @@ use crate::descriptor::{CheckMiniscript, DescriptorError};
 use crate::wallet::utils::SecpCtx;
 
 use bitcoin::{
-    bip32,
+    NetworkKind, PrivateKey, PublicKey, bip32,
     key::XOnlyPublicKey,
     secp256k1::{self, Secp256k1, Signing},
-    NetworkKind, PrivateKey, PublicKey,
 };
 use miniscript::{
     descriptor::{Descriptor, DescriptorMultiXKey, DescriptorXKey, Wildcard},
@@ -35,11 +34,11 @@ use miniscript::{
 };
 use rand_core::{CryptoRng, RngCore};
 
+pub use miniscript::ScriptContext;
 pub use miniscript::descriptor::{
     DescriptorPublicKey, DescriptorSecretKey, KeyMap, SinglePriv, SinglePub, SinglePubKey,
     SortedMultiVec,
 };
-pub use miniscript::ScriptContext;
 
 #[cfg(feature = "keys-bip39")]
 #[cfg_attr(docsrs, doc(cfg(feature = "keys-bip39")))]
@@ -229,8 +228,8 @@ impl<Ctx: ScriptContext + 'static> ExtScriptContext for Ctx {
 /// use bdk_wallet::bitcoin::PublicKey;
 ///
 /// use bdk_wallet::keys::{
-///     mainnet_network_kind, DescriptorKey, DescriptorPublicKey, IntoDescriptorKey, KeyError,
-///     ScriptContext, SinglePub, SinglePubKey,
+///     DescriptorKey, DescriptorPublicKey, IntoDescriptorKey, KeyError, ScriptContext, SinglePub,
+///     SinglePubKey, mainnet_network_kind,
 /// };
 ///
 /// pub struct MyKeyType {
@@ -304,7 +303,7 @@ impl<Ctx: ScriptContext + 'static> ExtScriptContext for Ctx {
 /// let (descriptor, _, _) = bdk_wallet::descriptor!(pkh(key))?;
 /// //                                               ^^^^^ changing this to `wpkh` would make it compile
 ///
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 pub trait IntoDescriptorKey<Ctx: ScriptContext>: Sized {
     /// Turn the key into a [`DescriptorKey`] within the requested [`ScriptContext`]
@@ -391,7 +390,7 @@ impl<Ctx: ScriptContext> From<bip32::Xpriv> for ExtendedKey<Ctx> {
 /// an [`Xpub`] can implement only the required `into_extended_key()` method.
 ///
 /// ```
-/// use bdk_wallet::bitcoin::{bip32, NetworkKind};
+/// use bdk_wallet::bitcoin::{NetworkKind, bip32};
 /// use bdk_wallet::keys::{DerivableKey, ExtendedKey, KeyError, ScriptContext};
 ///
 /// struct MyCustomKeyType {
@@ -419,9 +418,9 @@ impl<Ctx: ScriptContext> From<bip32::Xpriv> for ExtendedKey<Ctx> {
 /// For types that don't internally encode the [`NetworkKind`] in which they are valid, only the
 /// network kind specified in the [`Xpriv`] or [`Xpub`] will be considered valid.
 /// ```
-/// use bdk_wallet::bitcoin::{bip32, NetworkKind};
+/// use bdk_wallet::bitcoin::{NetworkKind, bip32};
 /// use bdk_wallet::keys::{
-///     any_network_kind, DerivableKey, DescriptorKey, ExtendedKey, KeyError, ScriptContext,
+///     DerivableKey, DescriptorKey, ExtendedKey, KeyError, ScriptContext, any_network_kind,
 /// };
 ///
 /// struct MyCustomKeyType {
@@ -472,7 +471,7 @@ use bdk_wallet::bitcoin::NetworkKind;
 use bdk_wallet::keys::{DerivableKey, ExtendedKey};
 use bdk_wallet::keys::bip39::{Mnemonic, Language};
 
-# fn main() -> Result<(), Box<dyn std::error::Error>> {
+# fn main() -> Result<(), Box<dyn core::error::Error>> {
 let xkey: ExtendedKey =
     Mnemonic::parse_in(
         Language::English,
@@ -969,6 +968,11 @@ impl<Ctx: ScriptContext> IntoDescriptorKey<Ctx> for DescriptorSecretKey {
             DescriptorSecretKey::XPrv(DescriptorXKey { xkey, .. }) if xkey.network.is_mainnet() => {
                 mainnet_network_kind()
             }
+            DescriptorSecretKey::MultiXPrv(DescriptorMultiXKey { xkey, .. })
+                if xkey.network.is_mainnet() =>
+            {
+                mainnet_network_kind()
+            }
             _ => test_network_kind(),
         };
 
@@ -1038,8 +1042,7 @@ impl fmt::Display for KeyError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for KeyError {}
+impl core::error::Error for KeyError {}
 
 #[cfg_attr(coverage_nightly, coverage(off))]
 #[cfg(test)]
@@ -1082,7 +1085,10 @@ mod test {
             bip32::Xpriv::generate_with_entropy_default(TEST_ENTROPY).unwrap();
 
         assert_eq!(generated_xprv.valid_network_kinds, mainnet_network_kind());
-        assert_eq!(generated_xprv.to_string(), "xprv9s21ZrQH143K4Xr1cJyqTvuL2FWR8eicgY9boWqMBv8MDVUZ65AXHnzBrK1nyomu6wdcabRgmGTaAKawvhAno1V5FowGpTLVx3jxzE5uk3Q");
+        assert_eq!(
+            generated_xprv.to_string(),
+            "xprv9s21ZrQH143K4Xr1cJyqTvuL2FWR8eicgY9boWqMBv8MDVUZ65AXHnzBrK1nyomu6wdcabRgmGTaAKawvhAno1V5FowGpTLVx3jxzE5uk3Q"
+        );
     }
 
     #[test]
@@ -1110,5 +1116,44 @@ mod test {
         let xprv = xkey.into_xprv(NetworkKind::Test).unwrap();
 
         assert_eq!(xprv.network, NetworkKind::Test);
+    }
+
+    #[test]
+    fn test_multixprv_mainnet_gets_mainnet_network_kind() {
+        use core::str::FromStr;
+        use miniscript::descriptor::DerivPaths;
+
+        let mainnet_xprv = bip32::Xpriv::from_str(
+            "xprv9s21ZrQH143K3c3gF1DUWpWNr2SG2XrG8oYPpqYh7hoWsJy9NjabErnzriJPpnGHyKz5NgdXmq1KVbqS1r4NXdCoKitWg5e86zqXHa8kxyB",
+        )
+        .unwrap();
+        assert!(mainnet_xprv.network.is_mainnet());
+
+        let multi_xprv_key = DescriptorSecretKey::MultiXPrv(DescriptorMultiXKey {
+            origin: None,
+            xkey: mainnet_xprv,
+            derivation_paths: DerivPaths::new(vec![
+                bip32::DerivationPath::from_str("m/0").unwrap(),
+            ])
+            .unwrap(),
+            wildcard: Wildcard::Unhardened,
+        });
+
+        let desc_key: DescriptorKey<miniscript::Segwitv0> =
+            multi_xprv_key.into_descriptor_key().unwrap();
+
+        // Verify the key gets mainnet_network_kind(). Previously, MultiXPrv fell
+        // through to the catch-all `_ => test_network_kind()` arm, which meant
+        // mainnet keys were incorrectly treated as testnet.
+        match desc_key {
+            DescriptorKey::Secret(_, network_kinds, _) => {
+                assert_eq!(
+                    network_kinds,
+                    mainnet_network_kind(),
+                    "MultiXPrv with mainnet xkey should get mainnet_network_kind, not test_network_kind"
+                );
+            }
+            _ => panic!("expected DescriptorKey::Secret"),
+        }
     }
 }

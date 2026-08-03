@@ -38,7 +38,7 @@
 //! )
 //! .network(Network::Testnet4)
 //! .create_wallet_no_persist()?;
-//! # Ok::<_, Box<dyn std::error::Error>>(())
+//! # Ok::<_, Box<dyn core::error::Error>>(())
 //! ```
 //!
 //! ### Export a `Wallet` to FullyNoded format
@@ -55,7 +55,7 @@
 //! let export = FullyNodedExport::export_wallet(&wallet, "exported wallet", true).unwrap();
 //!
 //! println!("Exported: {}", export.to_string());
-//! # Ok::<_, Box<dyn std::error::Error>>(())
+//! # Ok::<_, Box<dyn core::error::Error>>(())
 //! ```
 //!
 //! ### Export a `Wallet` to Caravan format
@@ -72,7 +72,7 @@
 //! let export = CaravanExport::export_wallet(&wallet, "My Multisig Wallet").unwrap();
 //!
 //! println!("Exported: {}", export.to_string());
-//! # Ok::<_, Box<dyn std::error::Error>>(())
+//! # Ok::<_, Box<dyn core::error::Error>>(())
 //! ```
 //!
 //! ### Import from Caravan format
@@ -113,7 +113,7 @@
 //! let (external, internal) = import.to_descriptors()?;
 //! # assert_eq!(external, "wsh(sortedmulti(2,[73756c7f/48'/0'/0'/2']tpubDCKxNyM3bLgbEX13Mcd8mYxbVg9ajDkWXMh29hMWBurKfVmBfWAM96QVP3zaUcN51HvkZ3ar4VwP82kC8JZhhux8vFQoJintSpVBwpFvyU3/0/*,[f9f62194/48'/0'/0'/2']tpubDDp3ZSH1yCwusRppH7zgSxq2t1VEUyXSeEp8E5aFS8m43MknUjiF1bSLo3CGWAxbDyhF1XowA5ukPzyJZjznYk3kYi6oe7QxtX2euvKWsk4/0/*))#pgthjwtg");
 //! # assert_eq!(internal, "wsh(sortedmulti(2,[73756c7f/48'/0'/0'/2']tpubDCKxNyM3bLgbEX13Mcd8mYxbVg9ajDkWXMh29hMWBurKfVmBfWAM96QVP3zaUcN51HvkZ3ar4VwP82kC8JZhhux8vFQoJintSpVBwpFvyU3/1/*,[f9f62194/48'/0'/0'/2']tpubDDp3ZSH1yCwusRppH7zgSxq2t1VEUyXSeEp8E5aFS8m43MknUjiF1bSLo3CGWAxbDyhF1XowA5ukPzyJZjznYk3kYi6oe7QxtX2euvKWsk4/1/*))#cmcnua7a");
-//! # Ok::<_, Box<dyn std::error::Error>>(())
+//! # Ok::<_, Box<dyn core::error::Error>>(())
 //! ```
 //!
 //! ## Important Notes on Import/Export Operations
@@ -716,11 +716,11 @@ mod test {
     use core::str::FromStr;
 
     use bdk_chain::BlockId;
-    use bitcoin::{hashes::Hash, BlockHash, Network};
+    use bitcoin::{BlockHash, Network, hashes::Hash};
 
     use super::*;
-    use crate::test_utils::*;
     use crate::Wallet;
+    use crate::test_utils::*;
 
     fn get_test_wallet(descriptor: &str, change_descriptor: &str, network: Network) -> Wallet {
         let mut wallet = Wallet::create(descriptor.to_string(), change_descriptor.to_string())
@@ -820,7 +820,10 @@ mod test {
         let wallet = get_test_wallet(descriptor, change_descriptor, Network::Bitcoin);
         let export = FullyNodedExport::export_wallet(&wallet, "Test Label", true).unwrap();
 
-        assert_eq!(export.to_string(), "{\"descriptor\":\"wpkh(xprv9s21ZrQH143K4CTb63EaMxja1YiTnSEWKMbn23uoEnAzxjdUJRQkazCAtzxGm4LSoTSVTptoV9RbchnKPW9HxKtZumdyxyikZFDLhogJ5Uj/44\'/0\'/0\'/0/*)\",\"blockheight\":5000,\"label\":\"Test Label\"}");
+        assert_eq!(
+            export.to_string(),
+            "{\"descriptor\":\"wpkh(xprv9s21ZrQH143K4CTb63EaMxja1YiTnSEWKMbn23uoEnAzxjdUJRQkazCAtzxGm4LSoTSVTptoV9RbchnKPW9HxKtZumdyxyikZFDLhogJ5Uj/44\'/0\'/0\'/0/*)\",\"blockheight\":5000,\"label\":\"Test Label\"}"
+        );
     }
 
     #[test]

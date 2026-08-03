@@ -5,10 +5,10 @@ use bitcoin::{BlockHash, Network, NetworkKind};
 use miniscript::descriptor::KeyMap;
 
 use crate::{
-    descriptor::{DescriptorError, ExtendedDescriptor, IntoWalletDescriptor},
-    utils::SecpCtx,
     AsyncWalletPersister, CreateWithPersistError, KeychainKind, LoadWithPersistError, Wallet,
     WalletPersister,
+    descriptor::{DescriptorError, ExtendedDescriptor, IntoWalletDescriptor},
+    utils::SecpCtx,
 };
 
 use super::{ChangeSet, LoadError, PersistedWallet};
@@ -267,6 +267,28 @@ impl LoadParams {
             KeychainKind::External => self.check_descriptor = Some(expected),
             KeychainKind::Internal => self.check_change_descriptor = Some(expected),
         }
+        self
+    }
+
+    /// Checks that the provided two-path descriptor matches exactly what is loaded for both the
+    /// external and internal keychains.
+    ///
+    /// # Note
+    ///
+    /// The provided descriptor may only contain extended public keys (`xpub`) with exactly 2 paths,
+    /// or an error will occur at load time.
+    pub fn two_path_descriptor<D>(mut self, expected_descriptor: D) -> Self
+    where
+        D: IntoWalletDescriptor + Send + Clone + 'static,
+    {
+        let external: DescriptorToExtract =
+            make_two_path_descriptor_to_extract(expected_descriptor.clone(), 0);
+        let internal: DescriptorToExtract =
+            make_two_path_descriptor_to_extract(expected_descriptor, 1);
+
+        self.check_descriptor = Some(Some(external));
+        self.check_change_descriptor = Some(Some(internal));
+
         self
     }
 

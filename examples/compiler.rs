@@ -14,12 +14,12 @@ extern crate bitcoin;
 extern crate miniscript;
 extern crate serde_json;
 
-use std::error::Error;
+use core::error::Error;
 use std::str::FromStr;
 
 use bitcoin::Network;
-use miniscript::policy::Concrete;
 use miniscript::Descriptor;
+use miniscript::policy::Concrete;
 
 use bdk_wallet::{KeychainKind, Wallet};
 

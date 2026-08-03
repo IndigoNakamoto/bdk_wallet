@@ -88,8 +88,7 @@ impl fmt::Display for Error {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}
 
 impl From<bitcoin::bip32::Error> for Error {
     fn from(err: bitcoin::bip32::Error) -> Self {
@@ -124,5 +123,17 @@ impl From<bitcoin::hex::HexToBytesError> for Error {
 impl From<crate::descriptor::policy::PolicyError> for Error {
     fn from(err: crate::descriptor::policy::PolicyError) -> Self {
         Error::Policy(err)
+    }
+}
+
+impl From<miniscript::RelLockTimeError> for Error {
+    fn from(err: miniscript::RelLockTimeError) -> Self {
+        Error::Miniscript(miniscript::Error::RelativeLockTime(err))
+    }
+}
+
+impl From<miniscript::AbsLockTimeError> for Error {
+    fn from(err: miniscript::AbsLockTimeError) -> Self {
+        Error::Miniscript(miniscript::Error::AbsoluteLockTime(err))
     }
 }

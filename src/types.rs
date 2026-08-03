@@ -14,8 +14,10 @@ use chain::{ChainPosition, ConfirmationBlockTime};
 use core::convert::AsRef;
 use core::fmt;
 
+use crate::collections::BTreeMap;
+
 use bitcoin::transaction::{OutPoint, Sequence, TxOut};
-use bitcoin::{psbt, Weight};
+use bitcoin::{Weight, psbt};
 
 use serde::{Deserialize, Serialize};
 
@@ -122,17 +124,13 @@ impl Utxo {
                 outpoint,
                 psbt_input,
                 ..
-            } => {
-                if let Some(prev_tx) = &psbt_input.non_witness_utxo {
-                    return &prev_tx.output[outpoint.vout as usize];
-                }
-
-                if let Some(txout) = &psbt_input.witness_utxo {
-                    return txout;
-                }
-
-                unreachable!("Foreign UTXOs will always have one of these set")
-            }
+            } => psbt_input.witness_utxo.as_ref().unwrap_or_else(|| {
+                psbt_input
+                    .non_witness_utxo
+                    .as_ref()
+                    .and_then(|tx| tx.output.get(outpoint.vout as usize))
+                    .expect("Foreign UTXOs should have one of witness_utxo, non_witness_utxo set")
+            }),
         }
     }
 
@@ -142,6 +140,55 @@ impl Utxo {
             Utxo::Local(_) => None,
             Utxo::Foreign { sequence, .. } => Some(*sequence),
         }
+    }
+}
+
+/// The finalization status for a single PSBT input.
+#[derive(Debug, PartialEq)]
+pub enum FinalizeInputOutcome {
+    /// The input was already finalized before this call.
+    AlreadyFinalized,
+    /// The input was successfully finalized during this call.
+    Finalized,
+    /// The wallet could not derive a descriptor for the input.
+    MissingDescriptor,
+    /// The wallet found the descriptor but could not construct the input satisfaction.
+    CouldNotSatisfy(miniscript::Error),
+}
+
+impl FinalizeInputOutcome {
+    /// Whether the input is finalized after this call.
+    pub fn is_finalized(&self) -> bool {
+        matches!(self, Self::AlreadyFinalized | Self::Finalized)
+    }
+}
+
+/// The outcome of a PSBT finalization attempt.
+#[derive(Debug, PartialEq)]
+pub struct FinalizePsbtOutcome {
+    outcomes: BTreeMap<usize, FinalizeInputOutcome>,
+}
+
+impl FinalizePsbtOutcome {
+    pub(crate) fn new(outcomes: BTreeMap<usize, FinalizeInputOutcome>) -> Self {
+        Self { outcomes }
+    }
+
+    /// Whether all inputs are finalized after this call.
+    pub fn is_finalized(&self) -> bool {
+        self.outcomes
+            .values()
+            .all(FinalizeInputOutcome::is_finalized)
+    }
+
+    /// Borrow the per-input finalization outcomes.
+    pub fn outcomes(&self) -> &BTreeMap<usize, FinalizeInputOutcome> {
+        &self.outcomes
+    }
+
+    /// Consume the collection and return the per-input finalization outcomes.
+    pub fn into_outcomes(self) -> BTreeMap<usize, FinalizeInputOutcome> {
+        self.outcomes
     }
 }
 
@@ -171,5 +218,80 @@ impl fmt::Display for IndexOutOfBoundsError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for IndexOutOfBoundsError {}
+impl core::error::Error for IndexOutOfBoundsError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::{
+        Amount, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness, absolute,
+        transaction,
+    };
+
+    fn build_tx(txout: TxOut) -> Transaction {
+        Transaction {
+            mw_tx: None,
+            is_hog_ex: false,
+            version: transaction::Version::TWO,
+            lock_time: absolute::LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: OutPoint::null(),
+                script_sig: ScriptBuf::default(),
+                sequence: Sequence::MAX,
+                witness: Witness::default(),
+            }],
+            output: vec![txout],
+        }
+    }
+
+    #[test]
+    fn txout_foreign_returns_witness_utxo() {
+        let txout = TxOut {
+            value: Amount::from_sat(100_000),
+            script_pubkey: ScriptBuf::default(),
+        };
+        let utxo = Utxo::Foreign {
+            outpoint: OutPoint::null(),
+            sequence: Sequence::MAX,
+            psbt_input: Box::new(psbt::Input {
+                witness_utxo: Some(txout.clone()),
+                ..Default::default()
+            }),
+        };
+        assert_eq!(utxo.txout(), &txout);
+    }
+
+    #[test]
+    fn txout_foreign_returns_non_witness_utxo() {
+        let txout = TxOut {
+            value: Amount::from_sat(100_000),
+            script_pubkey: ScriptBuf::default(),
+        };
+        let prev_tx = build_tx(txout.clone());
+        let utxo = Utxo::Foreign {
+            outpoint: OutPoint {
+                txid: prev_tx.compute_txid(),
+                vout: 0,
+            },
+            sequence: Sequence::MAX,
+            psbt_input: Box::new(psbt::Input {
+                non_witness_utxo: Some(prev_tx),
+                ..Default::default()
+            }),
+        };
+        assert_eq!(utxo.txout(), &txout);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "Foreign UTXOs should have one of witness_utxo, non_witness_utxo set"
+    )]
+    fn txout_foreign_panics_with_empty_psbt_input() {
+        let utxo = Utxo::Foreign {
+            outpoint: OutPoint::null(),
+            sequence: Sequence::MAX,
+            psbt_input: Box::new(psbt::Input::default()),
+        };
+        utxo.txout();
+    }
+}

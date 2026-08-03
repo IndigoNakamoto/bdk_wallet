@@ -21,9 +21,10 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use bitcoin::{
+    NetworkKind, PublicKey, TxOut,
     bip32::{ChildNumber, DerivationPath, Fingerprint, KeySource, Xpub},
     key::XOnlyPublicKey,
-    psbt, secp256k1, taproot, NetworkKind, PublicKey, TxOut,
+    psbt, secp256k1, taproot,
 };
 use miniscript::descriptor::{
     DefiniteDescriptorKey, DescriptorMultiXKey, DescriptorSecretKey, DescriptorType,
@@ -237,11 +238,17 @@ impl IntoWalletDescriptor for DescriptorTemplateOut {
                 // reset the `network_kind` to make sure the wallet struct gets a
                 // descriptor with the right `network_kind` everywhere.
                 let pk = match pk {
-                    DescriptorPublicKey::XPub(ref xpub) => {
+                    DescriptorPublicKey::XPub(xpub) => {
                         let mut xpub = xpub.clone();
                         xpub.xkey.network = self.network_kind;
 
                         DescriptorPublicKey::XPub(xpub)
+                    }
+                    DescriptorPublicKey::MultiXPub(multi_xpub) => {
+                        let mut multi_xpub = multi_xpub.clone();
+                        multi_xpub.xkey.network = self.network_kind;
+
+                        DescriptorPublicKey::MultiXPub(multi_xpub)
                     }
                     other => other.clone(),
                 };
@@ -276,6 +283,13 @@ impl IntoWalletDescriptor for DescriptorTemplateOut {
                     (DescriptorPublicKey::XPub(xpub), DescriptorSecretKey::XPrv(xprv)) => {
                         xpub.xkey.network = network_kind;
                         xprv.xkey.network = network_kind;
+                    }
+                    (
+                        DescriptorPublicKey::MultiXPub(multi_xpub),
+                        DescriptorSecretKey::MultiXPrv(multi_xprv),
+                    ) => {
+                        multi_xpub.xkey.network = network_kind;
+                        multi_xprv.xkey.network = network_kind;
                     }
                     (_, DescriptorSecretKey::Single(key)) => {
                         key.key.network = network_kind;
@@ -449,11 +463,10 @@ impl DescriptorMeta for ExtendedDescriptor {
         // Ensure that deriving `xpub` with `path` yields `expected`.
         let verify_key =
             |xpub: &DescriptorXKey<Xpub>, path: &DerivationPath, expected: &SinglePubKey| {
-                let derived = xpub
-                    .xkey
-                    .derive_pub(secp, path)
-                    .expect("The path should never contain hardened derivation steps")
-                    .public_key;
+                let derived = match xpub.xkey.derive_pub(secp, path) {
+                    Ok(derived) => derived.public_key,
+                    Err(_) => return false,
+                };
 
                 match expected {
                     SinglePubKey::FullKey(pk) if &PublicKey::new(derived) == pk => true,
@@ -618,8 +631,8 @@ mod test {
     use assert_matches::assert_matches;
     use bitcoin::hex::FromHex;
     use bitcoin::secp256k1::Secp256k1;
-    use bitcoin::{bip32, Psbt};
     use bitcoin::{NetworkKind, ScriptBuf};
+    use bitcoin::{Psbt, bip32};
 
     use super::*;
     use crate::psbt::PsbtUtils;
@@ -642,9 +655,11 @@ mod test {
         )
         .unwrap();
 
-        assert!(descriptor
-            .derive_from_psbt_input(&psbt.inputs[0], psbt.get_utxo_for(0), &Secp256k1::new())
-            .is_some());
+        assert!(
+            descriptor
+                .derive_from_psbt_input(&psbt.inputs[0], psbt.get_utxo_for(0), &Secp256k1::new())
+                .is_some()
+        );
     }
 
     #[test]
@@ -673,9 +688,11 @@ mod test {
         )
         .unwrap();
 
-        assert!(descriptor
-            .derive_from_psbt_input(&psbt.inputs[0], psbt.get_utxo_for(0), &Secp256k1::new())
-            .is_some());
+        assert!(
+            descriptor
+                .derive_from_psbt_input(&psbt.inputs[0], psbt.get_utxo_for(0), &Secp256k1::new())
+                .is_some()
+        );
     }
 
     #[test]
@@ -697,9 +714,11 @@ mod test {
         )
         .unwrap();
 
-        assert!(descriptor
-            .derive_from_psbt_input(&psbt.inputs[0], psbt.get_utxo_for(0), &Secp256k1::new())
-            .is_some());
+        assert!(
+            descriptor
+                .derive_from_psbt_input(&psbt.inputs[0], psbt.get_utxo_for(0), &Secp256k1::new())
+                .is_some()
+        );
     }
 
     #[test]
@@ -727,14 +746,16 @@ mod test {
         )
         .unwrap();
 
-        assert!(descriptor
-            .derive_from_psbt_input(&psbt.inputs[0], psbt.get_utxo_for(0), &Secp256k1::new())
-            .is_some());
+        assert!(
+            descriptor
+                .derive_from_psbt_input(&psbt.inputs[0], psbt.get_utxo_for(0), &Secp256k1::new())
+                .is_some()
+        );
     }
 
     #[test]
     fn test_to_wallet_descriptor_fixup_network_kinds() {
-        use crate::keys::{any_network_kind, IntoDescriptorKey};
+        use crate::keys::{IntoDescriptorKey, any_network_kind};
 
         let secp = Secp256k1::new();
 
@@ -766,7 +787,10 @@ mod test {
             wildcard: Wildcard::Unhardened,
         });
 
-        assert_eq!(wallet_desc.to_string(), "wpkh(tpubD6NzVbkrYhZ4XtJzoDja5snUjBNQRP5B3f4Hyn1T1x6PVPxzzVjvw6nJx2D8RBCxog9GEVjZoyStfepTz7TtKoBVdkCtnc7VCJh9dD4RAU9/0/*)#a3svx0ha");
+        assert_eq!(
+            wallet_desc.to_string(),
+            "wpkh(tpubD6NzVbkrYhZ4XtJzoDja5snUjBNQRP5B3f4Hyn1T1x6PVPxzzVjvw6nJx2D8RBCxog9GEVjZoyStfepTz7TtKoBVdkCtnc7VCJh9dD4RAU9/0/*)#a3svx0ha"
+        );
         assert_eq!(
             keymap
                 .get(&desc_pubkey)
@@ -870,7 +894,10 @@ mod test {
             .into_wallet_descriptor(&secp, NetworkKind::Test)
             .unwrap();
         let wallet_desc_str = wallet_desc.to_string();
-        assert_eq!(wallet_desc_str, "wpkh(tpubD6NzVbkrYhZ4XHndKkuB8FifXm8r5FQHwrN6oZuWCz13qb93rtgKvD4PQsqC4HP4yhV3tA2fqr2RbY5mNXfM7RxXUoeABoDtsFUq2zJq6YK/1/2/*)#67ju93jw");
+        assert_eq!(
+            wallet_desc_str,
+            "wpkh(tpubD6NzVbkrYhZ4XHndKkuB8FifXm8r5FQHwrN6oZuWCz13qb93rtgKvD4PQsqC4HP4yhV3tA2fqr2RbY5mNXfM7RxXUoeABoDtsFUq2zJq6YK/1/2/*)#67ju93jw"
+        );
 
         let (wallet_desc2, _) = wallet_desc_str
             .into_wallet_descriptor(&secp, NetworkKind::Test)
@@ -981,5 +1008,42 @@ mod test {
             .unwrap_err();
 
         Ok(())
+    }
+
+    #[test]
+    fn test_derive_from_psbt_input_with_hardened_key_origin_does_not_panic() {
+        let secp = Secp256k1::new();
+
+        // Create a descriptor with an xpub that has a wildcard.
+        let descriptor = Descriptor::<DescriptorPublicKey>::from_str(
+            "pkh([0f056943/44h/0h/0h]tpubDDpWvmUrPZrhSPmUzCMBHffvC3HyMAPnWDSAQNBTnj1iZeJa7BZQEttFiP4DS4GCcXQHezdXhn86Hj6LHX5EDstXPWrMaSneRWM8yUf6NFd/10/*)",
+        )
+        .unwrap();
+
+        // Craft a PSBT input with a bip32_derivation entry that contains hardened
+        // derivation steps. This simulates untrusted/malicious PSBT data.
+        let fingerprint = bip32::Fingerprint::from_str("0f056943").unwrap();
+        let hardened_path = bip32::DerivationPath::from_str("m/44h/0h/0h/10/0h").unwrap();
+
+        // Derive the actual public key from the xpub in the descriptor so the
+        // fingerprint matches and we exercise the verify_key code path.
+        let xpub = bip32::Xpub::from_str(
+            "tpubDDpWvmUrPZrhSPmUzCMBHffvC3HyMAPnWDSAQNBTnj1iZeJa7BZQEttFiP4DS4GCcXQHezdXhn86Hj6LHX5EDstXPWrMaSneRWM8yUf6NFd",
+        )
+        .unwrap();
+        let dummy_pubkey = xpub.public_key;
+
+        let mut psbt_input = psbt::Input::default();
+        psbt_input
+            .bip32_derivation
+            .insert(dummy_pubkey, (fingerprint, hardened_path));
+
+        // Previously, this would panic with "The path should never contain hardened
+        // derivation steps". Now it should gracefully return None.
+        let result = descriptor.derive_from_psbt_input(&psbt_input, None, &secp);
+        assert!(
+            result.is_none(),
+            "should return None rather than panicking on hardened derivation in PSBT key origins"
+        );
     }
 }

@@ -44,8 +44,8 @@ use alloc::sync::Arc;
 use bitcoin::psbt::{self, Psbt};
 use bitcoin::script::PushBytes;
 use bitcoin::{
-    absolute, transaction::Version, Amount, FeeRate, OutPoint, ScriptBuf, Sequence, Transaction,
-    TxIn, TxOut, Txid, Weight,
+    Amount, FeeRate, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, Weight,
+    absolute, transaction::Version,
 };
 use rand_core::RngCore;
 
@@ -137,7 +137,6 @@ pub(crate) struct TxParams {
     pub(crate) change_policy: ChangeSpendPolicy,
     pub(crate) only_witness_utxo: bool,
     pub(crate) add_global_xpubs: bool,
-    pub(crate) include_output_redeem_witness_script: bool,
     pub(crate) bumping_fee: Option<PreviousFee>,
     pub(crate) current_height: Option<absolute::LockTime>,
     pub(crate) allow_dust: bool,
@@ -326,6 +325,10 @@ impl<'a, Cs> TxBuilder<'a, Cs> {
     ///
     /// These have priority over the "unspendable" UTXOs, meaning that if a UTXO is present both in
     /// the "UTXOs" and the "unspendable" list, it will be spent.
+    ///
+    /// Manually selected UTXOs bypass optional-UTXO filtering (for example TRUC version
+    /// compatibility checks). Callers must ensure any manually selected unconfirmed UTXO is valid
+    /// for the transaction version being built.
     pub fn add_utxo(&mut self, outpoint: OutPoint) -> Result<&mut Self, AddUtxoError> {
         self.add_utxos(&[outpoint])
     }
@@ -342,6 +345,10 @@ impl<'a, Cs> TxBuilder<'a, Cs> {
     /// UTXOs through the [`TxBuilder::add_utxo`] method.
     /// A manually added local UTXO will always have greater precedence than a foreign UTXO. No
     /// matter if it was added before or after the foreign UTXO.
+    ///
+    /// Manually selected UTXOs bypass optional-UTXO filtering (for example TRUC version
+    /// compatibility checks). Callers must ensure any manually selected unconfirmed UTXO is valid
+    /// for the transaction version being built.
     ///
     /// At a minimum to add a foreign UTXO we need:
     ///
@@ -411,23 +418,19 @@ impl<'a, Cs> TxBuilder<'a, Cs> {
         satisfaction_weight: Weight,
         sequence: Sequence,
     ) -> Result<&mut Self, AddForeignUtxoError> {
-        if psbt_input.witness_utxo.is_none() {
-            match psbt_input.non_witness_utxo.as_ref() {
-                Some(tx) => {
-                    if tx.compute_txid() != outpoint.txid {
-                        return Err(AddForeignUtxoError::InvalidTxid {
-                            input_txid: tx.compute_txid(),
-                            foreign_utxo: outpoint,
-                        });
-                    }
-                    if tx.output.len() <= outpoint.vout as usize {
-                        return Err(AddForeignUtxoError::InvalidOutpoint(outpoint));
-                    }
-                }
-                None => {
-                    return Err(AddForeignUtxoError::MissingUtxo);
-                }
+        // Always validate non_witness_utxo if present
+        if let Some(tx) = psbt_input.non_witness_utxo.as_ref() {
+            if tx.compute_txid() != outpoint.txid {
+                return Err(AddForeignUtxoError::InvalidTxid {
+                    input_txid: tx.compute_txid(),
+                    foreign_utxo: outpoint,
+                });
             }
+            if tx.output.len() <= outpoint.vout as usize {
+                return Err(AddForeignUtxoError::InvalidOutpoint(outpoint));
+            }
+        } else if psbt_input.witness_utxo.is_none() {
+            return Err(AddForeignUtxoError::MissingUtxo);
         }
 
         let mut existing_index: Option<usize> = None;
@@ -599,15 +602,6 @@ impl<'a, Cs> TxBuilder<'a, Cs> {
     /// the `non_witness_utxo`.
     pub fn only_witness_utxo(&mut self) -> &mut Self {
         self.params.only_witness_utxo = true;
-        self
-    }
-
-    /// Fill-in the [`psbt::Output::redeem_script`](bitcoin::psbt::Output::redeem_script) and
-    /// [`psbt::Output::witness_script`](bitcoin::psbt::Output::witness_script) fields.
-    ///
-    /// This is useful for signers which always require it, like ColdCard hardware wallets.
-    pub fn include_output_redeem_witness_script(&mut self) -> &mut Self {
-        self.params.include_output_redeem_witness_script = true;
         self
     }
 
@@ -919,8 +913,7 @@ impl fmt::Display for AddUtxoError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for AddUtxoError {}
+impl core::error::Error for AddUtxoError {}
 
 #[derive(Debug)]
 /// Error returned from [`TxBuilder::add_foreign_utxo`].
@@ -959,14 +952,13 @@ impl fmt::Display for AddForeignUtxoError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for AddForeignUtxoError {}
+impl core::error::Error for AddForeignUtxoError {}
 
 type TxSort<T> = dyn (Fn(&T, &T) -> core::cmp::Ordering) + Send + Sync;
 
 /// Ordering of the transaction's inputs and outputs
 #[derive(Clone, Default)]
-pub enum TxOrdering {
+pub enum TxOrdering<In = TxIn, Out = TxOut> {
     /// Randomized (default)
     #[default]
     Shuffle,
@@ -981,13 +973,13 @@ pub enum TxOrdering {
     /// Provide custom comparison functions for sorting
     Custom {
         /// Transaction inputs sort function
-        input_sort: Arc<TxSort<TxIn>>,
+        input_sort: Arc<TxSort<In>>,
         /// Transaction outputs sort function
-        output_sort: Arc<TxSort<TxOut>>,
+        output_sort: Arc<TxSort<Out>>,
     },
 }
 
-impl core::fmt::Debug for TxOrdering {
+impl<I, O> core::fmt::Debug for TxOrdering<I, O> {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             TxOrdering::Shuffle => write!(f, "Shuffle"),
@@ -1065,9 +1057,10 @@ mod test {
         };
     }
 
+    use crate::test_utils::*;
+    use bitcoin::TxOut;
     use bitcoin::consensus::deserialize;
     use bitcoin::hex::FromHex;
-    use bitcoin::TxOut;
 
     use super::*;
     #[test]
@@ -1157,7 +1150,7 @@ mod test {
 
     #[test]
     fn test_output_ordering_custom_with_sha256() {
-        use bitcoin::hashes::{sha256, Hash};
+        use bitcoin::hashes::{Hash, sha256};
 
         let original_tx = ordering_test_tx!();
         let mut tx_1 = original_tx.clone();
@@ -1290,9 +1283,8 @@ mod test {
 
     #[test]
     fn test_exclude_unconfirmed() {
-        use crate::test_utils::*;
         use bdk_chain::BlockId;
-        use bitcoin::{hashes::Hash, BlockHash, Network};
+        use bitcoin::{BlockHash, Network, hashes::Hash};
 
         let mut wallet = Wallet::create_single(get_test_tr_single_sig())
             .network(Network::Regtest)
@@ -1380,9 +1372,8 @@ mod test {
 
     #[test]
     fn test_build_fee_bump_remove_change_output_single_desc() {
-        use crate::test_utils::*;
         use bdk_chain::BlockId;
-        use bitcoin::{hashes::Hash, BlockHash, Network};
+        use bitcoin::{BlockHash, Network, hashes::Hash};
 
         let mut wallet = Wallet::create_single(get_test_tr_single_sig())
             .network(Network::Regtest)
@@ -1426,8 +1417,6 @@ mod test {
 
     #[test]
     fn duplicated_utxos_in_add_utxos_are_only_added_once() {
-        use crate::test_utils::get_funded_wallet_wpkh;
-
         let (mut wallet, _) = get_funded_wallet_wpkh();
         let utxo = wallet.list_unspent().next().unwrap();
         let op = utxo.outpoint;
@@ -1440,7 +1429,6 @@ mod test {
 
     #[test]
     fn not_duplicated_utxos_in_required_list() {
-        use crate::test_utils::get_funded_wallet_wpkh;
         let (mut wallet1, _) = get_funded_wallet_wpkh();
         let utxo1 @ LocalOutput { outpoint, .. } = wallet1.list_unspent().next().unwrap();
         let mut builder = wallet1.build_tx();
@@ -1455,10 +1443,54 @@ mod test {
         assert_eq!(vec![fake_weighted_utxo], builder.params.utxos);
     }
 
+    // This test demonstrates that `add_utxo` only considers the final insertion.
+    #[test]
+    fn test_add_utxo_final_outpoint_retained() {
+        // Create empty wallet
+        let (desc, change_desc) = get_test_wpkh_and_change_desc();
+        let mut wallet = Wallet::create(desc, change_desc)
+            .network(bdk_wallet::bitcoin::Network::Regtest)
+            .create_wallet_no_persist()
+            .unwrap();
+
+        let outpoint_0 = receive_output(
+            &mut wallet,
+            Amount::from_sat(35_000),
+            ReceiveTo::Mempool(50),
+        );
+        let outpoint_1 = receive_output(
+            &mut wallet,
+            Amount::from_sat(25_200),
+            ReceiveTo::Mempool(100),
+        );
+
+        let send_to = wallet.next_unused_address(KeychainKind::External).address;
+        let mut tx_builder = wallet.build_tx();
+        tx_builder
+            .add_utxo(outpoint_0)
+            .unwrap()
+            .add_utxo(outpoint_1)
+            .unwrap()
+            .add_utxo(outpoint_0)
+            .unwrap()
+            .add_recipient(send_to.script_pubkey(), Amount::from_sat(60_000))
+            .fee_rate(FeeRate::from_sat_per_vb(1).unwrap())
+            .ordering(crate::TxOrdering::Untouched);
+        let psbt = tx_builder.finish().unwrap();
+
+        assert_eq!(
+            psbt.unsigned_tx
+                .input
+                .iter()
+                .map(|txin| txin.previous_output)
+                .collect::<Vec<_>>(),
+            vec![outpoint_1, outpoint_0],
+            "Last outpoint added should be retained"
+        );
+    }
+
     #[test]
     fn not_duplicated_foreign_utxos_with_same_outpoint_but_different_weight() {
-        use crate::test_utils::{get_funded_wallet_single, get_funded_wallet_wpkh, get_test_wpkh};
-
         // Use two different wallets to avoid adding local UTXOs
         let (wallet1, txid1) = get_funded_wallet_wpkh();
         let (mut wallet2, txid2) = get_funded_wallet_single(get_test_wpkh());
@@ -1477,32 +1509,36 @@ mod test {
         let mut builder = wallet2.build_tx();
 
         // add foreign UTXO with satisfaction weight x
-        assert!(builder
-            .add_foreign_utxo(
-                utxo1.outpoint,
-                psbt::Input {
-                    non_witness_utxo: Some(tx1.as_ref().clone()),
-                    ..Default::default()
-                },
-                satisfaction_weight,
-            )
-            .is_ok());
+        assert!(
+            builder
+                .add_foreign_utxo(
+                    utxo1.outpoint,
+                    psbt::Input {
+                        non_witness_utxo: Some(tx1.as_ref().clone()),
+                        ..Default::default()
+                    },
+                    satisfaction_weight,
+                )
+                .is_ok()
+        );
 
         let modified_satisfaction_weight = satisfaction_weight - Weight::from_wu(6);
 
         assert_ne!(satisfaction_weight, modified_satisfaction_weight);
 
         // add foreign UTXO with same outpoint but satisfaction weight x - 6wu
-        assert!(builder
-            .add_foreign_utxo(
-                utxo1.outpoint,
-                psbt::Input {
-                    non_witness_utxo: Some(tx1.as_ref().clone()),
-                    ..Default::default()
-                },
-                modified_satisfaction_weight,
-            )
-            .is_ok());
+        assert!(
+            builder
+                .add_foreign_utxo(
+                    utxo1.outpoint,
+                    psbt::Input {
+                        non_witness_utxo: Some(tx1.as_ref().clone()),
+                        ..Default::default()
+                    },
+                    modified_satisfaction_weight,
+                )
+                .is_ok()
+        );
 
         assert_eq!(builder.params.utxos.len(), 1);
         assert_eq!(
@@ -1514,7 +1550,6 @@ mod test {
     // Test that local outputs have precedence over utxos added via `add_foreign_utxo`
     #[test]
     fn test_local_utxos_have_precedence_over_foreign_utxos() {
-        use crate::test_utils::get_funded_wallet_wpkh;
         let (mut wallet, _) = get_funded_wallet_wpkh();
 
         let utxo = wallet.list_unspent().next().unwrap();

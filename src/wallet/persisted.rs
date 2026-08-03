@@ -1,5 +1,5 @@
 use core::{
-    fmt,
+    error, fmt,
     future::Future,
     marker::PhantomData,
     ops::{Deref, DerefMut},
@@ -11,8 +11,8 @@ use chain::Merge;
 
 use crate::error::LoadError;
 use crate::{
-    descriptor::{calc_checksum, DescriptorError},
     ChangeSet, CreateParams, LoadParams, Wallet,
+    descriptor::{DescriptorError, calc_checksum},
 };
 
 /// Trait that persists [`PersistedWallet`].
@@ -284,16 +284,16 @@ impl WalletPersister for bdk_chain::rusqlite::Connection {
     type Error = bdk_chain::rusqlite::Error;
 
     fn initialize(persister: &mut Self) -> Result<ChangeSet, Self::Error> {
-        let db_tx = persister.transaction()?;
-        ChangeSet::init_sqlite_tables(&db_tx)?;
-        let changeset = ChangeSet::from_sqlite(&db_tx)?;
+        let mut db_tx = persister.transaction()?;
+        let changeset =
+            <bdk_chain::rusqlite::Transaction<'_> as WalletPersister>::initialize(&mut db_tx)?;
         db_tx.commit()?;
         Ok(changeset)
     }
 
     fn persist(persister: &mut Self, changeset: &ChangeSet) -> Result<(), Self::Error> {
-        let db_tx = persister.transaction()?;
-        changeset.persist_to_sqlite(&db_tx)?;
+        let mut db_tx = persister.transaction()?;
+        <bdk_chain::rusqlite::Transaction<'_> as WalletPersister>::persist(&mut db_tx, changeset)?;
         db_tx.commit()
     }
 }
@@ -301,7 +301,6 @@ impl WalletPersister for bdk_chain::rusqlite::Connection {
 /// Error for [`bdk_file_store`]'s implementation of [`WalletPersister`].
 #[cfg(feature = "file_store")]
 #[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
 pub enum FileStoreError {
     /// Error when loading from the store.
     Load(bdk_file_store::StoreErrorWithDump<ChangeSet>),
@@ -321,7 +320,7 @@ impl core::fmt::Display for FileStoreError {
 }
 
 #[cfg(feature = "file_store")]
-impl std::error::Error for FileStoreError {}
+impl error::Error for FileStoreError {}
 
 #[cfg(feature = "file_store")]
 impl WalletPersister for bdk_file_store::Store<ChangeSet> {
@@ -357,8 +356,7 @@ impl<E: fmt::Display> fmt::Display for LoadWithPersistError<E> {
     }
 }
 
-#[cfg(feature = "std")]
-impl<E: fmt::Debug + fmt::Display> std::error::Error for LoadWithPersistError<E> {}
+impl<E: fmt::Debug + fmt::Display> error::Error for LoadWithPersistError<E> {}
 
 /// Error type for [`PersistedWallet::create`].
 #[derive(Debug)]
@@ -389,8 +387,7 @@ impl<E: fmt::Display> fmt::Display for CreateWithPersistError<E> {
     }
 }
 
-#[cfg(feature = "std")]
-impl<E: fmt::Debug + fmt::Display> std::error::Error for CreateWithPersistError<E> {}
+impl<E: fmt::Debug + fmt::Display> error::Error for CreateWithPersistError<E> {}
 
 /// Helper function to display basic information about a [`ChangeSet`].
 fn changeset_info(f: &mut fmt::Formatter<'_>, changeset: &ChangeSet) -> fmt::Result {

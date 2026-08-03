@@ -1,7 +1,7 @@
 use bdk_chain::{BlockId, CheckPoint, ConfirmationBlockTime};
-use bdk_wallet::test_utils::{get_test_wpkh_and_change_desc, new_wallet_and_funding_update};
 use bdk_wallet::Update;
 use bdk_wallet::WalletEvent;
+use bdk_wallet::test_utils::{get_test_wpkh_and_change_desc, new_wallet_and_funding_update};
 use bitcoin::block::Header;
 use bitcoin::hashes::Hash;
 use bitcoin::{Address, Amount, Block, BlockHash, FeeRate, Transaction, TxMerkleNode};
@@ -9,6 +9,17 @@ use core::str::FromStr;
 use std::sync::Arc;
 
 /// apply_update_events tests.
+#[test]
+fn test_empty_update_should_return_no_events() {
+    let (mut wallet, _) = bdk_wallet::test_utils::get_funded_wallet_wpkh();
+    assert!(
+        wallet
+            .apply_update_events(Update::default())
+            .is_ok_and(|vec| vec.is_empty()),
+        "Empty update should return no events"
+    );
+}
+
 #[test]
 fn test_new_confirmed_tx_event() {
     let (desc, change_desc) = get_test_wpkh_and_change_desc();
@@ -18,7 +29,7 @@ fn test_new_confirmed_tx_event() {
         height: 0,
         hash: wallet.local_chain().genesis_hash(),
     };
-    let events = wallet.apply_update_events(update).unwrap();
+    let events = wallet.apply_update_events(update.clone()).unwrap();
     let new_tip1 = wallet.local_chain().tip().block_id();
     assert_eq!(events.len(), 3);
     assert!(
@@ -30,6 +41,11 @@ fn test_new_confirmed_tx_event() {
     assert!(matches!(&events[1], WalletEvent::TxConfirmed {tx, ..} if tx.output.len() == 1));
     assert!(
         matches!(&events[2], WalletEvent::TxConfirmed {tx, block_time, ..} if block_time.block_id.height == 2000 && tx.output.len() == 2)
+    );
+    // Repeatedly applying an update should have no effect
+    assert!(
+        wallet.apply_update_events(update).unwrap().is_empty(),
+        "Applying repeat Update should return no events"
     );
 }
 
@@ -487,5 +503,35 @@ fn test_apply_block_tx_confirmed_new_block_event() {
         if txid == spending_tx.compute_txid()
         && block_time.block_id == (2, reorg_block2.block_hash()).into()
         && old_block_time.is_some()
+    ));
+}
+
+#[test]
+fn test_apply_unconfirmed_txs_tx_unconfirmed_event() {
+    let (desc, change_desc) = get_test_wpkh_and_change_desc();
+    let (mut wallet, _, update) = new_wallet_and_funding_update(desc, Some(change_desc));
+    let unconfirmed_tx = update.tx_update.txs[1].clone();
+    let events = wallet.apply_unconfirmed_txs_events([(unconfirmed_tx.clone(), 1010)]);
+    assert_eq!(events.len(), 1);
+    assert!(matches!(
+        &events[0],
+        WalletEvent::TxUnconfirmed {tx, old_block_time, ..}
+        if *tx == unconfirmed_tx
+        && old_block_time.is_none()
+    ));
+}
+
+#[test]
+fn test_apply_evicted_txs_tx_dropped_event() {
+    let (desc, change_desc) = get_test_wpkh_and_change_desc();
+    let (mut wallet, _, update) = new_wallet_and_funding_update(desc, Some(change_desc));
+    let unconfirmed_tx = update.tx_update.txs[1].clone();
+    let _events = wallet.apply_unconfirmed_txs_events([(unconfirmed_tx.clone(), 1010)]);
+    let events = wallet.apply_evicted_txs_events([(unconfirmed_tx.compute_txid(), 1010)]);
+    assert_eq!(events.len(), 1);
+    assert!(matches!(
+        &events[0],
+        WalletEvent::TxDropped {txid, tx}
+        if *txid == tx.compute_txid() && *tx == unconfirmed_tx
     ));
 }

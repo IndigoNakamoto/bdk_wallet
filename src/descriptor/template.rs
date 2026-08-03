@@ -14,14 +14,14 @@
 //! This module contains the definition of various common script templates that are ready to be
 //! used. See the documentation of each template for an example.
 
-use bitcoin::{bip32, NetworkKind};
+use bitcoin::{NetworkKind, bip32};
 use miniscript::{Legacy, Segwitv0, Tap};
 
 use super::{ExtendedDescriptor, IntoWalletDescriptor, KeyMap};
 use crate::descriptor::DescriptorError;
 use crate::keys::{DerivableKey, IntoDescriptorKey, ValidNetworkKinds};
 use crate::wallet::utils::SecpCtx;
-use crate::{descriptor, KeychainKind};
+use crate::{KeychainKind, descriptor};
 
 /// Type alias for the return type of [`DescriptorTemplate`], [`descriptor!`](crate::descriptor!)
 /// and others.
@@ -94,7 +94,7 @@ impl<T: DescriptorTemplate> IntoWalletDescriptor for T {
 ///         .to_string(),
 ///     "mwJ8hxFYW19JLuc65RCTaP4v1rzVU8cVMT"
 /// );
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct P2Pkh<K: IntoDescriptorKey<Legacy>>(pub K);
@@ -129,7 +129,7 @@ impl<K: IntoDescriptorKey<Legacy>> DescriptorTemplate for P2Pkh<K> {
 ///         .to_string(),
 ///     "QeRa56MTT34jkfg94tV4a6ipgK6NsjbGBY"
 /// );
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
@@ -165,7 +165,7 @@ impl<K: IntoDescriptorKey<Segwitv0>> DescriptorTemplate for P2Wpkh_P2Sh<K> {
 ///         .to_string(),
 ///     "tltc1q4525hmgw265tl3drrl8jjta7ayffu6jfr0a4zy"
 /// );
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct P2Wpkh<K: IntoDescriptorKey<Segwitv0>>(pub K);
@@ -200,7 +200,7 @@ impl<K: IntoDescriptorKey<Segwitv0>> DescriptorTemplate for P2Wpkh<K> {
 ///         .to_string(),
 ///     "tltc1pvjf9t34fznr53u5tqhejz4nr69luzkhlvsdsdfq9pglutrpve2xqp5a329"
 /// );
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct P2TR<K: IntoDescriptorKey<Tap>>(pub K);
@@ -233,7 +233,7 @@ impl<K: IntoDescriptorKey<Tap>> DescriptorTemplate for P2TR<K> {
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "mmogjc7HJEZkrLqyQYqJmxUqFaC7i4uf89");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "pkh([c55b303f/44'/1'/0']tpubDCuorCpzvYS2LCD75BR46KHE8GdDeg1wsAgNZeNr6DaB5gQK1o14uErKwKLuFmeemkQ6N2m3rNgvctdJLyr7nwu2yia7413Hhg8WWE44cgT/0/*)#5wrnv0xt");
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct Bip44<K: DerivableKey<Legacy>>(pub K, pub KeychainKind);
@@ -279,7 +279,7 @@ impl<K: DerivableKey<Legacy>> DescriptorTemplate for Bip44<K> {
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "miNG7dJTzJqNbFS19svRdTCisC65dsubtR");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "pkh([c55b303f/44'/1'/0']tpubDDDzQ31JkZB7VxUr9bjvBivDdqoFLrDPyLWtLapArAi51ftfmCb2DPxwLQzX65iNcXz1DGaVvyvo6JQ6rTU73r2gqdEo8uov9QKRb7nKCSU/0/*)#cfhumdqz");
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct Bip44Public<K: DerivableKey<Legacy>>(pub K, pub bip32::Fingerprint, pub KeychainKind);
@@ -322,7 +322,7 @@ impl<K: DerivableKey<Legacy>> DescriptorTemplate for Bip44Public<K> {
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "QYMWdBfWeay9WiTVVaAF18WnKRYH57qf5b");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "sh(wpkh([c55b303f/49'/1'/0']tpubDDYr4kdnZgjjShzYNjZUZXUUtpXaofdkMaipyS8ThEh45qFmhT4hKYways7UXmg6V7het1QiFo9kf4kYUXyDvV4rHEyvSpys9pjCB3pukxi/0/*))#s9vxlc8e");
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct Bip49<K: DerivableKey<Segwitv0>>(pub K, pub KeychainKind);
@@ -368,7 +368,7 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip49<K> {
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "QWfq5cMQJumYYdi1NfmXJMmEWaTwgnUaut");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "sh(wpkh([c55b303f/49'/1'/0']tpubDC49r947KGK52X5rBWS4BLs5m9SRY3pYHnvRrm7HcybZ3BfdEsGFyzCMzayi1u58eT82ZeyFZwH7DD6Q83E3fM9CpfMtmnTygnLfP59jL9L/0/*))#3tka9g0q");
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct Bip49Public<K: DerivableKey<Segwitv0>>(pub K, pub bip32::Fingerprint, pub KeychainKind);
@@ -411,7 +411,7 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip49Public<K> {
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tltc1qhl85z42h7r4su5u37rvvw0gk8j2t3n9y82jk96");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "wpkh([c55b303f/84'/1'/0']tpubDDc5mum24DekpNw92t6fHGp8Gr2JjF9J7i4TZBtN6Vp8xpAULG5CFaKsfugWa5imhrQQUZKXe261asP5koDHo5bs3qNTmf3U3o4v9SaB8gg/0/*)#6kfecsmr");
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct Bip84<K: DerivableKey<Segwitv0>>(pub K, pub KeychainKind);
@@ -457,7 +457,7 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84<K> {
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tltc1qedg9fdlf8cnnqfd5mks6uz5w4kgpk2prrvh7gh");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "wpkh([c55b303f/84'/1'/0']tpubDC2Qwo2TFsaNC4ju8nrUJ9mqVT3eSgdmy1yPqhgkjwmke3PRXutNGRYAUo6RCHTcVQaDR3ohNU9we59brGHuEKPvH1ags2nevW5opEE9Z5Q/0/*)#dhu402yv");
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct Bip84Public<K: DerivableKey<Segwitv0>>(pub K, pub bip32::Fingerprint, pub KeychainKind);
@@ -500,7 +500,7 @@ impl<K: DerivableKey<Segwitv0>> DescriptorTemplate for Bip84Public<K> {
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tltc1p5unlj09djx8xsjwe97269kqtxqpwpu2epeskgqjfk4lnf69v4tnq7zd4lr");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "tr([c55b303f/86'/1'/0']tpubDCiHofpEs47kx358bPdJmTZHmCDqQ8qw32upCSxHrSEdeeBs2T5Mq6QMB2ukeMqhNBiyhosBvJErteVhfURPGXPv3qLJPw5MVpHUewsbP2m/0/*)#dkgvr5hm");
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct Bip86<K: DerivableKey<Tap>>(pub K, pub KeychainKind);
@@ -546,7 +546,7 @@ impl<K: DerivableKey<Tap>> DescriptorTemplate for Bip86<K> {
 ///
 /// assert_eq!(wallet.next_unused_address(KeychainKind::External).to_string(), "tltc1pwjp9f2k5n0xq73ecuu0c5njvgqr3vkh7yaylmpqvsuuaafymh0msnm8kwp");
 /// assert_eq!(wallet.public_descriptor(KeychainKind::External).to_string(), "tr([c55b303f/86'/1'/0']tpubDC2Qwo2TFsaNC4ju8nrUJ9mqVT3eSgdmy1yPqhgkjwmke3PRXutNGRYAUo6RCHTcVQaDR3ohNU9we59brGHuEKPvH1ags2nevW5opEE9Z5Q/0/*)#2p65srku");
-/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// # Ok::<_, Box<dyn core::error::Error>>(())
 /// ```
 #[derive(Debug, Clone)]
 pub struct Bip86Public<K: DerivableKey<Tap>>(pub K, pub bip32::Fingerprint, pub KeychainKind);
@@ -646,8 +646,8 @@ mod test {
 
     use assert_matches::assert_matches;
     use bitcoin::Network;
-    use miniscript::descriptor::{DescriptorPublicKey, KeyMap};
     use miniscript::Descriptor;
+    use miniscript::descriptor::{DescriptorPublicKey, KeyMap};
 
     use crate::descriptor::{DescriptorError, DescriptorMeta};
     use crate::keys::ValidNetworkKinds;

@@ -1,9 +1,11 @@
 /target
 Cargo.lock
 /.vscode
+/.cargo/config.toml
 
 *.swp
 .idea
+justfile.local
 
 # Example persisted files.
 *.db

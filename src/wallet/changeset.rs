@@ -1,5 +1,5 @@
 use bdk_chain::{
-    indexed_tx_graph, keychain_txout, local_chain, tx_graph, ConfirmationBlockTime, Merge,
+    ConfirmationBlockTime, Merge, indexed_tx_graph, keychain_txout, local_chain, tx_graph,
 };
 use miniscript::{Descriptor, DescriptorPublicKey};
 use serde::{Deserialize, Serialize};
@@ -76,12 +76,42 @@ type IndexedTxGraphChangeSet =
 ///
 /// Existing fields may be extended in the future with additional sub-fields. New top-level fields
 /// are likely to be added as new features and core components are implemented. Existing fields may
-/// be removed in future versions of the library.
+/// be removed in future versions of the library following the deprecation policy below.
 ///
-/// The authors reserve the right to make breaking changes to the [`ChangeSet`] structure in
-/// a major version release. API changes affecting the types of data persisted will display
-/// prominently in the release notes. Users are advised to look for such changes and update their
-/// application accordingly.
+/// ## Version Compatibility
+///
+/// Any change to the [`ChangeSet`] data structure MUST correlate with a major version bump per
+/// [Semantic Versioning]. We guarantee that version N can read and
+/// deserialize [`ChangeSet`] data written by version N-1 (one major version back), but this
+/// guarantee does NOT extend to version N-2 or earlier. New fields added in version N must
+/// implement [`Default`] so that when reading N-1 data, absent fields are populated with default
+/// values.
+///
+/// Limited forward compatibility is provided for downgrades: version N-1 will successfully
+/// deserialize version N data without errors by ignoring unknown fields. Users should be aware that
+/// features introduced in version N will not be available when downgrading to N-1, and that
+/// downgrading can result in loss of data if not backed up. For this reason we recommend carefully
+/// planning major upgrades and backing up necessary data to avoid compatibility issues.
+///
+/// Fields can be removed using a 3-version deprecation cycle: fields are marked deprecated in
+/// version N with a reason and instructions for migrating, the field is retained in version N+1
+/// for compatibility where it deserializes but may not be used, and finally removed in version
+/// N+2. This ensures the standard backwards compatibility guarantees while allowing the removal of
+/// deprecated fields.
+///
+/// ### Responsibilities
+///
+/// Library authors SHOULD test all upgrade paths using the persistence test suite and in CI.
+/// Library authors MUST document API changes prominently in the release notes and CHANGELOG,
+/// clearly mark deprecated fields including migration instructions, and follow the 3-version
+/// deprecation cycle before removing fields.
+///
+/// Users SHOULD back up wallet data before major version upgrades, test upgrades in non-production
+/// environments first, and monitor the release notes for warnings and updates. Users MUST complete
+/// migrations within the compatibility window, and not skip major versions (i.e. upgrade major
+/// versions sequentially).
+///
+/// ### Custom Persistence Implementations
 ///
 /// The resulting interface is designed to give the user more control of what to persist and when
 /// to persist it. Custom implementations should consider and account for the possibility of
@@ -97,11 +127,13 @@ type IndexedTxGraphChangeSet =
 /// [merged]: bdk_chain::Merge
 /// [`network`]: Self::network
 /// [`PersistedWallet`]: crate::PersistedWallet
-/// [SQLite]: <https://github.com/bitcoindevkit/bdk/blob/chain-0.23.2/crates/chain/src/rusqlite_impl.rs>
+/// [SQLite]: <https://docs.rs/rusqlite/0.31.0/rusqlite/>
+
 /// [`Update`]: crate::Update
 /// [`WalletPersister`]: crate::WalletPersister
 /// [`Wallet::staged`]: crate::Wallet::staged
 /// [`Wallet`]: crate::Wallet
+/// [Semantic Versioning]: <https://doc.rust-lang.org/cargo/reference/semver.html>
 #[derive(Default, Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ChangeSet {
     /// Descriptor for recipient addresses.
@@ -117,33 +149,37 @@ pub struct ChangeSet {
     /// Changes to [`KeychainTxOutIndex`](keychain_txout::KeychainTxOutIndex).
     pub indexer: keychain_txout::ChangeSet,
     /// Changes to locked outpoints.
+    #[serde(default)]
     pub locked_outpoints: locked_outpoints::ChangeSet,
 }
 
 impl Merge for ChangeSet {
     /// Merge another [`ChangeSet`] into itself.
     fn merge(&mut self, other: Self) {
-        if other.descriptor.is_some() {
+        if self.descriptor.is_none() && other.descriptor.is_some() {
+            self.descriptor = other.descriptor;
+        } else {
             debug_assert!(
-                self.descriptor.is_none() || self.descriptor == other.descriptor,
+                other.descriptor.is_none() || self.descriptor == other.descriptor,
                 "descriptor must never change"
             );
-            self.descriptor = other.descriptor;
         }
-        if other.change_descriptor.is_some() {
+        if self.change_descriptor.is_none() && other.change_descriptor.is_some() {
+            self.change_descriptor = other.change_descriptor;
+        } else {
             debug_assert!(
-                self.change_descriptor.is_none()
+                other.change_descriptor.is_none()
                     || self.change_descriptor == other.change_descriptor,
                 "change descriptor must never change"
             );
-            self.change_descriptor = other.change_descriptor;
         }
-        if other.network.is_some() {
+        if self.network.is_none() && other.network.is_some() {
+            self.network = other.network;
+        } else {
             debug_assert!(
-                self.network.is_none() || self.network == other.network,
+                other.network.is_none() || self.network == other.network,
                 "network must never change"
             );
-            self.network = other.network;
         }
 
         // merge locked outpoints
@@ -217,8 +253,8 @@ impl ChangeSet {
     /// Recover a [`ChangeSet`] from sqlite database.
     pub fn from_sqlite(db_tx: &chain::rusqlite::Transaction) -> chain::rusqlite::Result<Self> {
         use bitcoin::{OutPoint, Txid};
-        use chain::rusqlite::OptionalExtension;
         use chain::Impl;
+        use chain::rusqlite::OptionalExtension;
 
         let mut changeset = Self::default();
 
@@ -273,11 +309,12 @@ impl ChangeSet {
         &self,
         db_tx: &chain::rusqlite::Transaction,
     ) -> chain::rusqlite::Result<()> {
-        use chain::rusqlite::named_params;
         use chain::Impl;
+        use chain::rusqlite::named_params;
 
         let mut descriptor_statement = db_tx.prepare_cached(&format!(
-            "INSERT INTO {}(id, descriptor) VALUES(:id, :descriptor) ON CONFLICT(id) DO UPDATE SET descriptor=:descriptor",
+            "INSERT INTO {}(id, descriptor) VALUES(:id, :descriptor) ON CONFLICT(id) DO UPDATE SET descriptor=COALESCE({}.descriptor, :descriptor)",
+            Self::WALLET_TABLE_NAME,
             Self::WALLET_TABLE_NAME,
         ))?;
         if let Some(descriptor) = &self.descriptor {
@@ -288,7 +325,8 @@ impl ChangeSet {
         }
 
         let mut change_descriptor_statement = db_tx.prepare_cached(&format!(
-            "INSERT INTO {}(id, change_descriptor) VALUES(:id, :change_descriptor) ON CONFLICT(id) DO UPDATE SET change_descriptor=:change_descriptor",
+            "INSERT INTO {}(id, change_descriptor) VALUES(:id, :change_descriptor) ON CONFLICT(id) DO UPDATE SET change_descriptor=COALESCE({}.change_descriptor, :change_descriptor)",
+            Self::WALLET_TABLE_NAME,
             Self::WALLET_TABLE_NAME,
         ))?;
         if let Some(change_descriptor) = &self.change_descriptor {
@@ -299,7 +337,8 @@ impl ChangeSet {
         }
 
         let mut network_statement = db_tx.prepare_cached(&format!(
-            "INSERT INTO {}(id, network) VALUES(:id, :network) ON CONFLICT(id) DO UPDATE SET network=:network",
+            "INSERT INTO {}(id, network) VALUES(:id, :network) ON CONFLICT(id) DO UPDATE SET network=COALESCE({}.network, :network)",
+            Self::WALLET_TABLE_NAME,
             Self::WALLET_TABLE_NAME,
         ))?;
         if let Some(network) = self.network {
@@ -383,5 +422,108 @@ impl From<locked_outpoints::ChangeSet> for ChangeSet {
             locked_outpoints,
             ..Default::default()
         }
+    }
+}
+
+#[cfg_attr(coverage_nightly, coverage(off))]
+#[cfg(test)]
+mod test {
+    // Tests that merging `ChangeSet`s with write-once fields follows "first write wins" semantics
+    //
+    // Verifies three scenarios:
+    // 1. `None` + `Some(x)` => `Some(x)` (initial write accepted)
+    // 2. `Some(x)` + `None` => `Some(x)` (field is not cleared)
+    // 3. `Some(x)` + `Some(y)` => `Some(x)` (same value, no change)
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn merge_first_write_wins() {
+        use super::*;
+        use crate::persist_test_utils::DESCRIPTORS;
+        use bitcoin::Network;
+        let descriptor: Descriptor<DescriptorPublicKey> = DESCRIPTORS[0].parse().unwrap();
+        let change_descriptor: Descriptor<DescriptorPublicKey> = DESCRIPTORS[1].parse().unwrap();
+
+        // Scenario 1: None + Some(x) - first write populates the field
+        let mut change_set = ChangeSet::default();
+        let other_change_set = ChangeSet {
+            descriptor: Some(descriptor.clone()),
+            change_descriptor: Some(change_descriptor.clone()),
+            network: Some(Network::Bitcoin),
+            ..ChangeSet::default()
+        };
+        Merge::merge(&mut change_set, other_change_set);
+        assert_eq!(
+            change_set.descriptor,
+            Some(descriptor.clone()),
+            "descriptor should be populated from first merge"
+        );
+        assert_eq!(
+            change_set.change_descriptor,
+            Some(change_descriptor.clone()),
+            "change_descriptor should be populated from first merge"
+        );
+        assert_eq!(
+            change_set.network,
+            Some(Network::Bitcoin),
+            "network should be populated from first merge"
+        );
+
+        // Scenario 2: Some(x) + None - existing field is unchanged
+        let mut change_set = ChangeSet {
+            descriptor: Some(descriptor.clone()),
+            change_descriptor: Some(change_descriptor.clone()),
+            network: Some(Network::Bitcoin),
+            ..ChangeSet::default()
+        };
+        Merge::merge(&mut change_set, ChangeSet::default());
+        assert_eq!(
+            change_set.descriptor,
+            Some(descriptor.clone()),
+            "descriptor must not change when merging empty changeset"
+        );
+        assert_eq!(
+            change_set.change_descriptor,
+            Some(change_descriptor.clone()),
+            "change_descriptor must not change when merging empty changeset"
+        );
+        assert_eq!(
+            change_set.network,
+            Some(Network::Bitcoin),
+            "network must not change when merging empty changeset"
+        );
+
+        // Scenario 3: Some(x) + Some(y) - existing field is unchanged
+        let mut change_set = ChangeSet {
+            descriptor: Some(descriptor.clone()),
+            change_descriptor: Some(change_descriptor.clone()),
+            network: Some(Network::Bitcoin),
+            ..ChangeSet::default()
+        };
+        let other_descriptor: Descriptor<DescriptorPublicKey> = DESCRIPTORS[2].parse().unwrap();
+        let other_change_descriptor: Descriptor<DescriptorPublicKey> =
+            DESCRIPTORS[3].parse().unwrap();
+        let other_change_set = ChangeSet {
+            descriptor: Some(other_descriptor),
+            change_descriptor: Some(other_change_descriptor),
+            network: Some(Network::Regtest),
+            ..ChangeSet::default()
+        };
+        assert_ne!(change_set, other_change_set);
+        Merge::merge(&mut change_set, other_change_set);
+        assert_eq!(
+            change_set.descriptor,
+            Some(descriptor),
+            "descriptor must not change when merging other value"
+        );
+        assert_eq!(
+            change_set.change_descriptor,
+            Some(change_descriptor),
+            "change_descriptor must not change when merging other value"
+        );
+        assert_eq!(
+            change_set.network,
+            Some(Network::Bitcoin),
+            "network must not change when merging other value"
+        );
     }
 }

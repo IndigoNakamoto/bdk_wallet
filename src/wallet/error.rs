@@ -13,15 +13,19 @@
 
 use crate::descriptor::policy::PolicyError;
 use crate::descriptor::{DescriptorError, ExtendedDescriptor};
-use crate::{coin_selection, descriptor, KeychainKind, LoadWithPersistError};
+use crate::wallet::coin_selection;
+use crate::{KeychainKind, LoadWithPersistError, descriptor};
 use alloc::{
     boxed::Box,
     string::{String, ToString},
 };
-use bitcoin::{absolute, psbt, Amount, BlockHash, Network, OutPoint, Sequence, Txid};
+use bitcoin::{Amount, BlockHash, Network, OutPoint, Sequence, Txid, absolute, psbt};
 use core::fmt;
 
-/// The error type when loading a [`Wallet`](crate::Wallet) from a [`ChangeSet`](crate::ChangeSet).
+/// The error type when loading a [`Wallet`] from a [`ChangeSet`].
+///
+/// [`Wallet`]: crate::wallet::Wallet
+/// [`ChangeSet`]: crate::wallet::ChangeSet
 #[derive(Debug, PartialEq)]
 pub enum LoadError {
     /// There was a problem with the passed-in descriptor(s).
@@ -50,11 +54,11 @@ impl fmt::Display for LoadError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for LoadError {}
+impl core::error::Error for LoadError {}
 
-/// Represents a mismatch with what is loaded and what is expected from
-/// [`LoadParams`](crate::LoadParams).
+/// Represents a mismatch with what is loaded and what is expected from [`LoadParams`].
+///
+/// [`LoadParams`]: crate::wallet::LoadParams
 #[derive(Debug, PartialEq)]
 pub enum LoadMismatch {
     /// Network does not match.
@@ -148,8 +152,7 @@ impl fmt::Display for MiniscriptPsbtError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for MiniscriptPsbtError {}
+impl core::error::Error for MiniscriptPsbtError {}
 
 #[derive(Debug)]
 /// Error returned from [`TxBuilder::finish`]
@@ -261,7 +264,10 @@ impl fmt::Display for CreateTxError {
                 requested,
                 required,
             } => {
-                write!(f, "TxBuilder requested timelock of `{requested}`, but at least `{required}` is required to spend from this script")
+                write!(
+                    f,
+                    "TxBuilder requested timelock of `{requested}`, but at least `{required}` is required to spend from this script"
+                )
             }
             CreateTxError::RbfSequenceCsv { sequence, csv } => {
                 write!(
@@ -365,8 +371,7 @@ impl From<coin_selection::InsufficientFunds> for CreateTxError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for CreateTxError {}
+impl core::error::Error for CreateTxError {}
 
 #[derive(Debug)]
 /// Error returned from [`Wallet::build_fee_bump`]
@@ -415,5 +420,120 @@ impl fmt::Display for BuildFeeBumpError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for BuildFeeBumpError {}
+impl core::error::Error for BuildFeeBumpError {}
+
+/// Error when creating a PSBT.
+#[cfg(all(bdk_wallet_unstable, feature = "bdk-tx"))]
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum CreatePsbtError {
+    /// No Bnb solution.
+    Bnb(bdk_coin_select::NoBnbSolution),
+    /// No output destinations were configured. At least one recipient, or
+    /// [`SelectionStrategy::All`] with an explicit [`change_script`], is required.
+    ///
+    /// [`SelectionStrategy::All`]: crate::SelectionStrategy::All
+    /// [`change_script`]: crate::PsbtParams::change_script
+    NoRecipients,
+    /// After coin selection, all outputs fell below the dust threshold and were
+    /// dropped to fees.
+    AllOutputsBelowDust,
+    /// Non-sufficient funds.
+    InsufficientFunds(bdk_coin_select::InsufficientFunds),
+    /// In order to use the [`add_global_xpubs`] option, every extended key in the descriptor must
+    /// either be a master key itself, having a depth of 0, or have an explicit origin provided.
+    ///
+    /// [`add_global_xpubs`]: crate::psbt::PsbtParams::add_global_xpubs
+    MissingKeyOrigin(bitcoin::bip32::Xpub),
+    /// Failed to create a spending plan for a manually selected output.
+    Plan(OutPoint),
+    /// Failed to create PSBT.
+    Psbt(bdk_tx::CreatePsbtError),
+    /// Selector error.
+    Selector(bdk_tx::SelectorError),
+    /// The UTXO of outpoint could not be found.
+    UnknownUtxo(OutPoint),
+    /// Failed to set the sequence on an input.
+    Sequence(bdk_tx::SetSequenceError),
+}
+
+#[cfg(all(bdk_wallet_unstable, feature = "bdk-tx"))]
+impl fmt::Display for CreatePsbtError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bnb(e) => write!(f, "{e}"),
+            Self::InsufficientFunds(e) => write!(f, "{e}"),
+            Self::NoRecipients => write!(f, "no output destinations were configured"),
+            Self::AllOutputsBelowDust => write!(f, "all outputs are below the dust threshold",),
+            Self::MissingKeyOrigin(e) => write!(f, "missing key origin: {e}"),
+            Self::Plan(op) => write!(f, "failed to create a plan for txout with outpoint {op}"),
+            Self::Psbt(e) => write!(f, "{e}"),
+            Self::Selector(e) => write!(f, "{e}"),
+            Self::UnknownUtxo(op) => write!(f, "unknown UTXO: {op}"),
+            Self::Sequence(e) => write!(f, "invalid sequence: {e}"),
+        }
+    }
+}
+
+#[cfg(all(bdk_wallet_unstable, feature = "bdk-tx"))]
+impl core::error::Error for CreatePsbtError {}
+
+/// Error when creating a Replace-By-Fee transaction.
+#[cfg(all(bdk_wallet_unstable, feature = "bdk-tx"))]
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ReplaceByFeeError {
+    /// There was a problem creating the PSBT
+    CreatePsbt(CreatePsbtError),
+    /// Failed to compute the fee of an original transaction
+    PreviousFee(bdk_chain::tx_graph::CalculateFeeError),
+    /// Original transaction could not be found
+    MissingTransaction(Txid),
+    /// One of the transactions to be replaced is already confirmed
+    TransactionConfirmed(Txid),
+    /// No original transactions were specified.
+    NoOriginalTransactions,
+    /// The replacement transaction has no inputs from the original transaction.
+    NoInputsFromOriginal(Txid),
+    /// A manually-selected input spends an output of a transaction in the replaced set
+    /// (either a direct conflict or one of its descendants); including it would produce
+    /// an invalid transaction.
+    ConflictingInput(OutPoint),
+}
+
+#[cfg(all(bdk_wallet_unstable, feature = "bdk-tx"))]
+impl fmt::Display for ReplaceByFeeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CreatePsbt(e) => write!(f, "{e}"),
+            Self::PreviousFee(e) => write!(f, "{e}"),
+            Self::MissingTransaction(txid) => write!(f, "missing transaction: {txid}"),
+            Self::TransactionConfirmed(txid) => {
+                write!(f, "transaction already confirmed: {txid}")
+            }
+            Self::NoOriginalTransactions => write!(f, "no original transactions were specified"),
+            Self::NoInputsFromOriginal(txid) => {
+                write!(
+                    f,
+                    "replacement has no inputs from original transaction: {txid}"
+                )
+            }
+            Self::ConflictingInput(outpoint) => {
+                write!(
+                    f,
+                    "manually-selected input {outpoint} conflicts with the replacement set"
+                )
+            }
+        }
+    }
+}
+
+#[cfg(all(bdk_wallet_unstable, feature = "bdk-tx"))]
+impl core::error::Error for ReplaceByFeeError {}
+
+#[cfg(all(bdk_wallet_unstable, feature = "bdk-tx"))]
+impl From<CreatePsbtError> for ReplaceByFeeError {
+    fn from(e: CreatePsbtError) -> Self {
+        Self::CreatePsbt(e)
+    }
+}

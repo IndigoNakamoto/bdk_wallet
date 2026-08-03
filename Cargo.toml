@@ -12,15 +12,15 @@ keywords = ["litecoin", "wallet", "descriptor", "psbt"]
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 authors = ["Bitcoin Dev Kit Developers"]
-edition = "2021"
+edition = "2024"
 rust-version = "1.85.0"
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "docsrs"]
+rustdoc-args = ["--cfg", "docsrs", "--cfg", "bdk_wallet_unstable"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)', 'cfg(bdk_wallet_unstable)'] }
 
 [dependencies]
 # Nested clone uses path deps against the sibling Litecoin BDK crates.
@@ -51,6 +51,9 @@ test-utils = ["std", "anyhow", "tempfile"]
 mweb = ["dep:bdk_mweb"]
 # Parallel MWEB SQLite store (beside wallet rusqlite).
 mweb-sqlite = ["mweb", "bdk_mweb/rusqlite", "rusqlite"]
+# Declared so upstream `cfg(feature = "bdk-tx")` gates stay valid. Enabling it is unsupported
+# until a litecoin-compatible `bdk_tx` exists (crates.io pulls bitcoin types that don't unify).
+bdk-tx = []
 
 [dev-dependencies]
 anyhow = "1"

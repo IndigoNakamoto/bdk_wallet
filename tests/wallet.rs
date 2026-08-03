@@ -3,25 +3,29 @@ use std::sync::Arc;
 
 use assert_matches::assert_matches;
 use bdk_chain::{BlockId, ConfirmationBlockTime};
+use bdk_wallet::KeychainKind;
 use bdk_wallet::coin_selection;
-use bdk_wallet::descriptor::{calc_checksum, DescriptorError};
+use bdk_wallet::coin_selection::InsufficientFunds;
+use bdk_wallet::descriptor::{DescriptorError, IntoWalletDescriptor, calc_checksum};
 use bdk_wallet::error::CreateTxError;
 use bdk_wallet::psbt::PsbtUtils;
-use bdk_wallet::signer::{SignOptions, SignerError};
+use bdk_wallet::signer::{SignOptions, SignerError, SignersContainer};
 use bdk_wallet::test_utils::*;
-use bdk_wallet::KeychainKind;
-use bdk_wallet::{AddressInfo, Balance, PersistedWallet, Update, Wallet, WalletTx};
+use bdk_wallet::{
+    AddressInfo, Balance, FinalizeInputOutcome, IndexOutOfBoundsError, PersistedWallet, Update,
+    Wallet, WalletTx,
+};
 use bitcoin::constants::COINBASE_MATURITY;
 use bitcoin::hashes::Hash;
 use bitcoin::script::PushBytesBuf;
 use bitcoin::sighash::{EcdsaSighashType, TapSighashType};
 use bitcoin::taproot::TapNodeHash;
 use bitcoin::{
-    absolute, transaction, Address, Amount, BlockHash, FeeRate, Network, OutPoint, ScriptBuf,
-    Sequence, SignedAmount, Transaction, TxIn, TxOut, Txid,
+    Address, Amount, BlockHash, FeeRate, Network, NetworkKind, OutPoint, ScriptBuf, Sequence,
+    SignedAmount, Transaction, TxIn, TxOut, Txid, absolute, transaction,
 };
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 
 mod common;
 
@@ -812,7 +816,9 @@ fn test_create_tx_input_hd_keypaths() {
     use bitcoin::bip32::{DerivationPath, Fingerprint};
     use core::str::FromStr;
 
-    let (mut wallet, _) = get_funded_wallet_single("wpkh([d34db33f/44'/0'/0']tpubDEnoLuPdBep9bzw5LoGYpsxUQYheRQ9gcgrJhJEcdKFB9cWQRyYmkCyRoTqeD4tJYiVVgt6A3rN6rWn9RYhR9sBsGxji29LYWHuKKbdb1ev/0/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh([d34db33f/44'/0'/0']tpubDEnoLuPdBep9bzw5LoGYpsxUQYheRQ9gcgrJhJEcdKFB9cWQRyYmkCyRoTqeD4tJYiVVgt6A3rN6rWn9RYhR9sBsGxji29LYWHuKKbdb1ev/0/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder.drain_to(addr.script_pubkey()).drain_wallet();
@@ -833,7 +839,9 @@ fn test_create_tx_output_hd_keypaths() {
     use bitcoin::bip32::{DerivationPath, Fingerprint};
     use core::str::FromStr;
 
-    let (mut wallet, _) = get_funded_wallet_single("wpkh([d34db33f/44'/0'/0']tpubDEnoLuPdBep9bzw5LoGYpsxUQYheRQ9gcgrJhJEcdKFB9cWQRyYmkCyRoTqeD4tJYiVVgt6A3rN6rWn9RYhR9sBsGxji29LYWHuKKbdb1ev/0/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh([d34db33f/44'/0'/0']tpubDEnoLuPdBep9bzw5LoGYpsxUQYheRQ9gcgrJhJEcdKFB9cWQRyYmkCyRoTqeD4tJYiVVgt6A3rN6rWn9RYhR9sBsGxji29LYWHuKKbdb1ev/0/*)",
+    );
 
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
@@ -1131,7 +1139,9 @@ fn test_create_tx_policy_path_use_csv() {
 
 #[test]
 fn test_create_tx_policy_path_ignored_subtree_with_csv() {
-    let (mut wallet, _) = get_funded_wallet_single("wsh(or_d(pk(cRjo6jqfVNP33HhSS76UhXETZsGTZYx8FMFvR9kpbtCSV1PmdZdu),or_i(and_v(v:pkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW),older(30)),and_v(v:pkh(cMnkdebixpXMPfkcNEjjGin7s94hiehAH4mLbYkZoh9KSiNNmqC8),older(90)))))");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wsh(or_d(pk(cRjo6jqfVNP33HhSS76UhXETZsGTZYx8FMFvR9kpbtCSV1PmdZdu),or_i(and_v(v:pkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW),older(30)),and_v(v:pkh(cMnkdebixpXMPfkcNEjjGin7s94hiehAH4mLbYkZoh9KSiNNmqC8),older(90)))))",
+    );
 
     let external_policy = wallet.policies(KeychainKind::External).unwrap().unwrap();
     let root_id = external_policy.id;
@@ -1153,7 +1163,9 @@ fn test_create_tx_policy_path_ignored_subtree_with_csv() {
 #[test]
 fn test_create_tx_global_xpubs_with_origin() {
     use bitcoin::bip32;
-    let (mut wallet, _) = get_funded_wallet_single("wpkh([73756c7f/48'/0'/0'/2']tpubDCKxNyM3bLgbEX13Mcd8mYxbVg9ajDkWXMh29hMWBurKfVmBfWAM96QVP3zaUcN51HvkZ3ar4VwP82kC8JZhhux8vFQoJintSpVBwpFvyU3/0/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh([73756c7f/48'/0'/0'/2']tpubDCKxNyM3bLgbEX13Mcd8mYxbVg9ajDkWXMh29hMWBurKfVmBfWAM96QVP3zaUcN51HvkZ3ar4VwP82kC8JZhhux8vFQoJintSpVBwpFvyU3/0/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder
@@ -1305,7 +1317,9 @@ fn test_get_psbt_input() {
     expected = "MissingKeyOrigin(\"tpubDCKxNyM3bLgbEX13Mcd8mYxbVg9ajDkWXMh29hMWBurKfVmBfWAM96QVP3zaUcN51HvkZ3ar4VwP82kC8JZhhux8vFQoJintSpVBwpFvyU3\")"
 )]
 fn test_create_tx_global_xpubs_origin_missing() {
-    let (mut wallet, _) = get_funded_wallet_single("wpkh(tpubDCKxNyM3bLgbEX13Mcd8mYxbVg9ajDkWXMh29hMWBurKfVmBfWAM96QVP3zaUcN51HvkZ3ar4VwP82kC8JZhhux8vFQoJintSpVBwpFvyU3/0/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh(tpubDCKxNyM3bLgbEX13Mcd8mYxbVg9ajDkWXMh29hMWBurKfVmBfWAM96QVP3zaUcN51HvkZ3ar4VwP82kC8JZhhux8vFQoJintSpVBwpFvyU3/0/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder
@@ -1317,7 +1331,9 @@ fn test_create_tx_global_xpubs_origin_missing() {
 #[test]
 fn test_create_tx_global_xpubs_master_without_origin() {
     use bitcoin::bip32;
-    let (mut wallet, _) = get_funded_wallet_single("wpkh(tpubD6NzVbkrYhZ4Y55A58Gv9RSNF5hy84b5AJqYy7sCcjFrkcLpPre8kmgfit6kY1Zs3BLgeypTDBZJM222guPpdz7Cup5yzaMu62u7mYGbwFL/0/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh(tpubD6NzVbkrYhZ4Y55A58Gv9RSNF5hy84b5AJqYy7sCcjFrkcLpPre8kmgfit6kY1Zs3BLgeypTDBZJM222guPpdz7Cup5yzaMu62u7mYGbwFL/0/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder
@@ -1367,7 +1383,9 @@ fn test_fee_amount_negative_drain_val() {
 
 #[test]
 fn test_sign_single_xprv() {
-    let (mut wallet, _) = get_funded_wallet_single("wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder.drain_to(addr.script_pubkey()).drain_wallet();
@@ -1381,8 +1399,62 @@ fn test_sign_single_xprv() {
 }
 
 #[test]
+fn test_sign_with_signers() {
+    let (descriptor, change_descriptor) = get_test_wpkh_and_change_desc();
+    let (mut wallet, _) = get_funded_wallet(descriptor, change_descriptor);
+    let (_, external_keymap) = descriptor
+        .into_wallet_descriptor(wallet.secp_ctx(), NetworkKind::Test)
+        .unwrap();
+    let external_signers = SignersContainer::build(
+        external_keymap,
+        wallet.public_descriptor(KeychainKind::External),
+        wallet.secp_ctx(),
+    );
+    let (_, internal_keymap) = change_descriptor
+        .into_wallet_descriptor(wallet.secp_ctx(), NetworkKind::Test)
+        .unwrap();
+    let internal_signers = SignersContainer::build(
+        internal_keymap,
+        wallet.public_descriptor(KeychainKind::Internal),
+        wallet.secp_ctx(),
+    );
+
+    let latest_block = wallet.latest_checkpoint().block_id();
+    let internal_addr = wallet.next_unused_address(KeychainKind::Internal);
+    receive_output_to_address(
+        &mut wallet,
+        internal_addr.address,
+        Amount::from_sat(25_000),
+        ConfirmationBlockTime {
+            block_id: latest_block,
+            confirmation_time: 0,
+        },
+    );
+    let addr = wallet.next_unused_address(KeychainKind::External);
+    let mut builder = wallet.build_tx();
+    builder.drain_to(addr.script_pubkey()).drain_wallet();
+    let mut psbt = builder.finish().unwrap();
+    assert_eq!(psbt.inputs.len(), 2);
+
+    let finalized = wallet
+        .sign_with_signers(
+            &mut psbt,
+            &[&external_signers, &internal_signers],
+            Default::default(),
+        )
+        .unwrap();
+    assert!(finalized);
+
+    let extracted = psbt.extract_tx().expect("failed to extract tx");
+    assert_eq!(extracted.input.len(), 2);
+    assert!(extracted.input.iter().all(|input| input.witness.len() == 2));
+}
+
+#[test]
 fn test_sign_single_xprv_with_master_fingerprint_and_path() {
-    let (mut wallet, _) = get_funded_wallet_single("wpkh([d34db33f/84h/1h/0h]tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh([d34db33f/84h/1h/0h]tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder.drain_to(addr.script_pubkey()).drain_wallet();
@@ -1397,7 +1469,9 @@ fn test_sign_single_xprv_with_master_fingerprint_and_path() {
 
 #[test]
 fn test_sign_single_xprv_bip44_path() {
-    let (mut wallet, _) = get_funded_wallet_single("wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/44'/0'/0'/0/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/44'/0'/0'/0/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder.drain_to(addr.script_pubkey()).drain_wallet();
@@ -1412,7 +1486,9 @@ fn test_sign_single_xprv_bip44_path() {
 
 #[test]
 fn test_sign_single_xprv_sh_wpkh() {
-    let (mut wallet, _) = get_funded_wallet_single("sh(wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*))");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "sh(wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*))",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder.drain_to(addr.script_pubkey()).drain_wallet();
@@ -1443,7 +1519,9 @@ fn test_sign_single_wif() {
 
 #[test]
 fn test_sign_single_xprv_no_hd_keypaths() {
-    let (mut wallet, _) = get_funded_wallet_single("wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder.drain_to(addr.script_pubkey()).drain_wallet();
@@ -1460,24 +1538,32 @@ fn test_sign_single_xprv_no_hd_keypaths() {
 }
 
 #[test]
-fn test_include_output_redeem_witness_script() {
-    let desc = get_test_wpkh();
+fn test_output_redeem_witness_script_populated_automatically() {
     let change_desc = "sh(wsh(multi(1,cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW,cRjo6jqfVNP33HhSS76UhXETZsGTZYx8FMFvR9kpbtCSV1PmdZdu)))";
-    let (mut wallet, _) = get_funded_wallet(desc, change_desc);
+
+    let (mut wallet, _) = get_funded_wallet(get_test_wpkh(), change_desc);
     let addr = Address::from_str("2N1Ffz3WaNzbeLFBb51xyFMHYSEUXcbiSoX")
         .unwrap()
         .assume_checked();
+
     let mut builder = wallet.build_tx();
-    builder
-        .add_recipient(addr.script_pubkey(), Amount::from_sat(45_000))
-        .include_output_redeem_witness_script();
+    builder.add_recipient(addr.script_pubkey(), Amount::from_sat(45_000));
     let psbt = builder.finish().unwrap();
 
-    // p2sh-p2wsh transaction should contain both witness and redeem scripts
-    assert!(psbt
+    let change_output = psbt
         .outputs
         .iter()
-        .any(|output| output.redeem_script.is_some() && output.witness_script.is_some()));
+        .find(|o| o.redeem_script.is_some() && o.witness_script.is_some())
+        .expect("change output should have scripts populated automatically by update_output_with_descriptor");
+
+    let witness_script = change_output.witness_script.as_ref().unwrap();
+    let expected_redeem = ScriptBuf::new_p2wsh(&witness_script.wscript_hash());
+
+    assert_eq!(
+        change_output.redeem_script.as_ref().unwrap(),
+        &expected_redeem,
+        "redeem_script should be the P2WSH hash of the witness_script"
+    );
 }
 
 #[test]
@@ -1487,9 +1573,7 @@ fn test_signing_only_one_of_multiple_inputs() {
         .unwrap()
         .assume_checked();
     let mut builder = wallet.build_tx();
-    builder
-        .add_recipient(addr.script_pubkey(), Amount::from_sat(45_000))
-        .include_output_redeem_witness_script();
+    builder.add_recipient(addr.script_pubkey(), Amount::from_sat(45_000));
     let mut psbt = builder.finish().unwrap();
 
     // add another input to the psbt that is at least passable.
@@ -1528,7 +1612,9 @@ fn test_signing_only_one_of_multiple_inputs() {
 
 #[test]
 fn test_try_finalize_sign_option() {
-    let (mut wallet, _) = get_funded_wallet_single("wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)",
+    );
 
     for try_finalize in &[true, false] {
         let addr = wallet.next_unused_address(KeychainKind::External);
@@ -1557,6 +1643,279 @@ fn test_try_finalize_sign_option() {
                 assert!(input.final_script_witness.is_none());
             }
         });
+    }
+}
+
+#[test]
+fn test_try_finalize_psbt_outcomes() {
+    {
+        let (mut wallet, _) = get_funded_wallet_single(get_test_wpkh());
+        let addr = wallet.next_unused_address(KeychainKind::External);
+        let mut builder = wallet.build_tx();
+        builder.drain_to(addr.script_pubkey()).drain_wallet();
+        let mut psbt = builder.finish().unwrap();
+
+        let is_final = wallet
+            .sign(
+                &mut psbt,
+                SignOptions {
+                    try_finalize: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(!is_final);
+        let output_bip32_derivations = psbt
+            .outputs
+            .iter()
+            .map(|output| output.bip32_derivation.clone())
+            .collect::<Vec<_>>();
+        assert!(
+            output_bip32_derivations
+                .iter()
+                .any(|derivation| !derivation.is_empty()),
+            "expected wallet-owned outputs to retain derivation data before finalization"
+        );
+
+        let finalized = wallet.try_finalize_psbt(&mut psbt).unwrap();
+
+        assert!(finalized.is_finalized());
+        assert_matches!(
+            finalized.outcomes().get(&0),
+            Some(FinalizeInputOutcome::Finalized)
+        );
+        assert!(
+            psbt.inputs[0].final_script_sig.is_some()
+                || psbt.inputs[0].final_script_witness.is_some()
+        );
+        assert_eq!(
+            psbt.outputs
+                .iter()
+                .map(|output| output.bip32_derivation.clone())
+                .collect::<Vec<_>>(),
+            output_bip32_derivations
+        );
+
+        let finalized = wallet.try_finalize_psbt(&mut psbt).unwrap();
+
+        assert!(finalized.is_finalized());
+        assert_matches!(
+            finalized.outcomes().get(&0),
+            Some(FinalizeInputOutcome::AlreadyFinalized)
+        );
+    }
+
+    {
+        let (mut wallet, _) = get_funded_wallet_single(get_test_wpkh());
+        let addr = wallet.next_unused_address(KeychainKind::External);
+        let mut builder = wallet.build_tx();
+        builder.add_recipient(addr.script_pubkey(), Amount::from_sat(25_000));
+        let mut psbt = builder.finish().unwrap();
+
+        let dud_input = bitcoin::psbt::Input {
+            witness_utxo: Some(TxOut {
+                value: Amount::from_sat(100_000),
+                script_pubkey: miniscript::Descriptor::<bitcoin::PublicKey>::from_str(
+                    "wpkh(025476c2e83188368da1ff3e292e7acafcdb3566bb0ad253f62fc70f07aeee6357)",
+                )
+                .unwrap()
+                .script_pubkey(),
+            }),
+            ..Default::default()
+        };
+
+        psbt.inputs.push(dud_input);
+        psbt.unsigned_tx.input.push(bitcoin::TxIn::default());
+
+        let finalized = wallet.try_finalize_psbt(&mut psbt).unwrap();
+
+        assert!(!finalized.is_finalized());
+        assert_matches!(
+            finalized.outcomes().get(&0),
+            Some(FinalizeInputOutcome::CouldNotSatisfy(
+                bdk_wallet::miniscript::Error::MissingSig(_)
+            ))
+        );
+        assert_matches!(
+            finalized.outcomes().get(&1),
+            Some(FinalizeInputOutcome::MissingDescriptor)
+        );
+    }
+}
+
+#[test]
+fn test_try_finalize_psbt_preserves_opaque_input_fields() {
+    let (mut wallet, _) = get_funded_wallet_single(get_test_wpkh());
+    let addr = wallet.next_unused_address(KeychainKind::External);
+    let mut builder = wallet.build_tx();
+    builder.drain_to(addr.script_pubkey()).drain_wallet();
+    let mut psbt = builder.finish().unwrap();
+
+    wallet
+        .sign(
+            &mut psbt,
+            SignOptions {
+                try_finalize: false,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    let proprietary_key = bitcoin::psbt::raw::ProprietaryKey {
+        prefix: b"bdk-test".to_vec(),
+        subtype: 0,
+        key: vec![1, 2, 3],
+    };
+    let proprietary_value = vec![4, 5, 6];
+    let unknown_key = bitcoin::psbt::raw::Key {
+        type_value: 0x42,
+        key: vec![7, 8, 9],
+    };
+    let unknown_value = vec![10, 11, 12];
+
+    psbt.inputs[0]
+        .proprietary
+        .insert(proprietary_key.clone(), proprietary_value.clone());
+    psbt.inputs[0]
+        .unknown
+        .insert(unknown_key.clone(), unknown_value.clone());
+
+    let finalized = wallet.try_finalize_psbt(&mut psbt).unwrap();
+
+    assert!(finalized.is_finalized());
+    assert_eq!(
+        psbt.inputs[0].proprietary.get(&proprietary_key),
+        Some(&proprietary_value)
+    );
+    assert_eq!(
+        psbt.inputs[0].unknown.get(&unknown_key),
+        Some(&unknown_value)
+    );
+}
+
+#[test]
+fn test_try_finalize_psbt_returns_index_out_of_bounds_for_malformed_psbt() {
+    {
+        let (mut wallet, _) = get_funded_wallet_single(get_test_wpkh());
+        let addr = wallet.next_unused_address(KeychainKind::External);
+        let mut builder = wallet.build_tx();
+        builder.drain_to(addr.script_pubkey()).drain_wallet();
+        let mut psbt = builder.finish().unwrap();
+
+        psbt.inputs.clear();
+
+        let err = wallet.try_finalize_psbt(&mut psbt).unwrap_err();
+
+        assert_eq!(err, IndexOutOfBoundsError::new(0, 0));
+    }
+
+    {
+        let (mut wallet, _) = get_funded_wallet_single(get_test_wpkh());
+        let addr = wallet.next_unused_address(KeychainKind::External);
+        let mut builder = wallet.build_tx();
+        builder.drain_to(addr.script_pubkey()).drain_wallet();
+        let mut psbt = builder.finish().unwrap();
+
+        wallet
+            .sign(
+                &mut psbt,
+                SignOptions {
+                    try_finalize: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert!(psbt.inputs[0].final_script_sig.is_none());
+        assert!(psbt.inputs[0].final_script_witness.is_none());
+
+        psbt.unsigned_tx
+            .input
+            .push(psbt.unsigned_tx.input[0].clone());
+
+        let err = wallet.try_finalize_psbt(&mut psbt).unwrap_err();
+
+        assert_eq!(err, IndexOutOfBoundsError::new(1, 1));
+        assert!(psbt.inputs[0].final_script_sig.is_none());
+        assert!(psbt.inputs[0].final_script_witness.is_none());
+    }
+}
+
+#[test]
+fn test_try_finalize_psbt_uses_psbt_timelocks() {
+    {
+        let (mut wallet, _) = get_funded_wallet_single(get_test_single_sig_cltv());
+        let addr = wallet.next_unused_address(KeychainKind::External);
+        let mut builder = wallet.build_tx();
+        builder.add_recipient(addr.script_pubkey(), Amount::from_sat(25_000));
+        let mut psbt = builder.finish().unwrap();
+
+        wallet
+            .sign(
+                &mut psbt,
+                SignOptions {
+                    try_finalize: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let mut valid_psbt = psbt.clone();
+        assert!(
+            wallet
+                .try_finalize_psbt(&mut valid_psbt)
+                .unwrap()
+                .is_finalized()
+        );
+
+        psbt.unsigned_tx.lock_time = absolute::LockTime::from_height(0).unwrap();
+
+        let finalized = wallet.try_finalize_psbt(&mut psbt).unwrap();
+
+        assert!(!finalized.is_finalized());
+        assert_matches!(
+            finalized.outcomes().get(&0),
+            Some(FinalizeInputOutcome::CouldNotSatisfy(_))
+        );
+        assert!(psbt.inputs[0].final_script_sig.is_none());
+        assert!(psbt.inputs[0].final_script_witness.is_none());
+    }
+
+    {
+        let (mut wallet, _) = get_funded_wallet_single(get_test_single_sig_csv());
+        let addr = wallet.next_unused_address(KeychainKind::External);
+        let mut builder = wallet.build_tx();
+        builder.add_recipient(addr.script_pubkey(), Amount::from_sat(25_000));
+        let mut psbt = builder.finish().unwrap();
+
+        wallet
+            .sign(
+                &mut psbt,
+                SignOptions {
+                    try_finalize: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let mut valid_psbt = psbt.clone();
+        assert!(
+            wallet
+                .try_finalize_psbt(&mut valid_psbt)
+                .unwrap()
+                .is_finalized()
+        );
+
+        psbt.unsigned_tx.input[0].sequence = Sequence::MAX;
+
+        let finalized = wallet.try_finalize_psbt(&mut psbt).unwrap();
+
+        assert!(!finalized.is_finalized());
+        assert_matches!(
+            finalized.outcomes().get(&0),
+            Some(FinalizeInputOutcome::CouldNotSatisfy(_))
+        );
+        assert!(psbt.inputs[0].final_script_sig.is_none());
+        assert!(psbt.inputs[0].final_script_witness.is_none());
     }
 }
 
@@ -1613,7 +1972,9 @@ fn test_taproot_try_finalize_sign_option() {
 fn test_sign_nonstandard_sighash() {
     let sighash = EcdsaSighashType::NonePlusAnyoneCanPay;
 
-    let (mut wallet, _) = get_funded_wallet_single("wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let mut builder = wallet.build_tx();
     builder
@@ -1665,10 +2026,12 @@ fn test_unused_address() {
         .expect("wallet");
 
     // `list_unused_addresses` should be empty if we haven't revealed any
-    assert!(wallet
-        .list_unused_addresses(KeychainKind::External)
-        .next()
-        .is_none());
+    assert!(
+        wallet
+            .list_unused_addresses(KeychainKind::External)
+            .next()
+            .is_none()
+    );
 
     assert_eq!(
         wallet
@@ -1802,8 +2165,7 @@ fn test_peek_address_at_index_not_derivable() {
 
 #[test]
 fn test_returns_index_and_address() {
-    let descriptor =
-        "wpkh(tpubEBr4i6yk5nf5DAaJpsi9N2pPYBeJ7fZ5Z9rmN4977iYLCGco1VyjB9tvvuvYtfZzjD5A8igzgw3HeWeeKFmanHYqksqZXYXGsw5zjnj7KM9/*)";
+    let descriptor = "wpkh(tpubEBr4i6yk5nf5DAaJpsi9N2pPYBeJ7fZ5Z9rmN4977iYLCGco1VyjB9tvvuvYtfZzjD5A8igzgw3HeWeeKFmanHYqksqZXYXGsw5zjnj7KM9/*)";
     let mut wallet = Wallet::create(descriptor, get_test_wpkh())
         .network(Network::Testnet4)
         .create_wallet_no_persist()
@@ -2240,10 +2602,11 @@ fn test_taproot_script_spend_sign_all_leaves() {
         "Unable to finalize tx"
     );
 
-    assert!(psbt
-        .inputs
-        .iter()
-        .all(|i| i.tap_script_sigs.len() == i.tap_scripts.len()));
+    assert!(
+        psbt.inputs
+            .iter()
+            .all(|i| i.tap_script_sigs.len() == i.tap_scripts.len())
+    );
 }
 
 #[test]
@@ -2279,11 +2642,9 @@ fn test_taproot_script_spend_sign_include_some_leaves() {
         "Unable to finalize tx"
     );
 
-    assert!(psbt.inputs[0]
-        .tap_script_sigs
-        .iter()
-        .all(|s| included_script_leaves.contains(&s.0 .1)
-            && !excluded_script_leaves.contains(&s.0 .1)));
+    assert!(psbt.inputs[0].tap_script_sigs.iter().all(
+        |s| included_script_leaves.contains(&s.0.1) && !excluded_script_leaves.contains(&s.0.1)
+    ));
 }
 
 #[test]
@@ -2319,11 +2680,9 @@ fn test_taproot_script_spend_sign_exclude_some_leaves() {
         "Unable to finalize tx"
     );
 
-    assert!(psbt.inputs[0]
-        .tap_script_sigs
-        .iter()
-        .all(|s| included_script_leaves.contains(&s.0 .1)
-            && !excluded_script_leaves.contains(&s.0 .1)));
+    assert!(psbt.inputs[0].tap_script_sigs.iter().all(
+        |s| included_script_leaves.contains(&s.0.1) && !excluded_script_leaves.contains(&s.0.1)
+    ));
 }
 
 #[test]
@@ -2618,7 +2977,9 @@ fn test_fee_rate_sign_no_grinding_high_r() {
     // Our goal is to obtain a transaction with a signature with high-R (71 bytes
     // instead of 70). We then check that our fee rate and fee calculation is
     // alright.
-    let (mut wallet, _) = get_funded_wallet_single("wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let fee_rate = FeeRate::from_sat_per_vb_u32(1);
     let mut builder = wallet.build_tx();
@@ -2685,7 +3046,9 @@ fn test_fee_rate_sign_grinding_low_r() {
     // by setting the `allow_grinding` signing option as true.
     // We then check that our fee rate and fee calculation is alright and that our
     // signature is 70 bytes.
-    let (mut wallet, _) = get_funded_wallet_single("wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)");
+    let (mut wallet, _) = get_funded_wallet_single(
+        "wpkh(tprv8ZgxMBicQKsPd3EupYiPRhaMooHKUHJxNsTfYuScep13go8QFfHdtkG9nRkFGb7busX4isf6X9dURGCoKgitaApQ6MupRhZMcELAxTBRJgS/*)",
+    );
     let addr = wallet.next_unused_address(KeychainKind::External);
     let fee_rate = FeeRate::from_sat_per_vb_u32(1);
     let mut builder = wallet.build_tx();
@@ -2768,77 +3131,6 @@ fn test_keychains_with_overlapping_spks() {
     };
     let _outpoint = receive_output_to_address(&mut wallet, addr, Amount::from_sat(8000), anchor);
     assert_eq!(wallet.balance().confirmed, Amount::from_sat(58000));
-}
-
-#[test]
-/// The wallet should re-use previously allocated change addresses when the tx using them is
-/// cancelled
-fn test_tx_cancellation() {
-    macro_rules! new_tx {
-        ($wallet:expr) => {{
-            let addr = Address::from_str("2N4eQYCbKUHCCTUjBJeHcJp9ok6J2GZsTDt")
-                .unwrap()
-                .assume_checked();
-            let mut builder = $wallet.build_tx();
-            builder.add_recipient(addr.script_pubkey(), Amount::from_sat(10_000));
-
-            let psbt = builder.finish().unwrap();
-
-            psbt
-        }};
-    }
-
-    let (mut wallet, _) = get_funded_wallet(get_test_wpkh(), get_test_tr_single_sig_xprv());
-
-    let psbt1 = new_tx!(wallet);
-    let change_derivation_1 = psbt1
-        .unsigned_tx
-        .output
-        .iter()
-        .find_map(|txout| wallet.derivation_of_spk(txout.script_pubkey.clone()))
-        .unwrap();
-    assert_eq!(change_derivation_1, (KeychainKind::Internal, 0));
-
-    let psbt2 = new_tx!(wallet);
-
-    let change_derivation_2 = psbt2
-        .unsigned_tx
-        .output
-        .iter()
-        .find_map(|txout| wallet.derivation_of_spk(txout.script_pubkey.clone()))
-        .unwrap();
-    assert_eq!(change_derivation_2, (KeychainKind::Internal, 1));
-
-    wallet.cancel_tx(&psbt1.extract_tx().expect("failed to extract tx"));
-
-    let psbt3 = new_tx!(wallet);
-    let change_derivation_3 = psbt3
-        .unsigned_tx
-        .output
-        .iter()
-        .find_map(|txout| wallet.derivation_of_spk(txout.script_pubkey.clone()))
-        .unwrap();
-    assert_eq!(change_derivation_3, (KeychainKind::Internal, 0));
-
-    let psbt3 = new_tx!(wallet);
-    let change_derivation_3 = psbt3
-        .unsigned_tx
-        .output
-        .iter()
-        .find_map(|txout| wallet.derivation_of_spk(txout.script_pubkey.clone()))
-        .unwrap();
-    assert_eq!(change_derivation_3, (KeychainKind::Internal, 2));
-
-    wallet.cancel_tx(&psbt3.extract_tx().expect("failed to extract tx"));
-
-    let psbt3 = new_tx!(wallet);
-    let change_derivation_4 = psbt3
-        .unsigned_tx
-        .output
-        .iter()
-        .find_map(|txout| wallet.derivation_of_spk(txout.script_pubkey.clone()))
-        .unwrap();
-    assert_eq!(change_derivation_4, (KeychainKind::Internal, 2));
 }
 
 #[test]
@@ -3015,4 +3307,207 @@ fn test_tx_ordering_untouched_preserves_insertion_ordering() {
 
     // Check vout is sorted by recipient insertion order
     assert!(txouts == vec![400, 300, 500]);
+}
+
+// BnB coin selection should find a solution using the optional UTXO.
+// This demonstrates that `calculate_cs_result` correctly orders required UTXOs before selected
+// ones.
+#[test]
+fn test_tx_ordering_untouched_preserves_insertion_ordering_bnb_success() {
+    // Create empty wallet
+    let (desc, change_desc) = get_test_wpkh_and_change_desc();
+    let mut wallet = Wallet::create(desc, change_desc)
+        .network(bdk_wallet::bitcoin::Network::Regtest)
+        .create_wallet_no_persist()
+        .unwrap();
+
+    // Set up UTXOs with specific values so BnB can find an exact match (avoiding change).
+    // - outpoint_0 (required): 35,000 sat - not enough alone
+    // - outpoint_1 (optional): 25,200 sat
+    // - Target: 60,000 sat
+    // - Expected fee: 200 sat
+
+    let outpoint_0 = receive_output(
+        &mut wallet,
+        Amount::from_sat(35_000),
+        ReceiveTo::Mempool(50),
+    );
+    let outpoint_1 = receive_output(
+        &mut wallet,
+        Amount::from_sat(25_200),
+        ReceiveTo::Mempool(100),
+    );
+
+    let send_to = wallet.next_unused_address(KeychainKind::External).address;
+    let mut tx_builder = wallet.build_tx();
+    tx_builder
+        .add_utxo(outpoint_0)
+        .unwrap()
+        .add_recipient(send_to.script_pubkey(), Amount::from_sat(60_000))
+        .fee_rate(FeeRate::from_sat_per_vb(1).unwrap())
+        .ordering(bdk_wallet::TxOrdering::Untouched);
+    let psbt = tx_builder.finish().unwrap();
+
+    // Verify that both UTXOs are selected in the correct order:
+    // required (outpoint_0) should appear before optional (outpoint_1)
+    assert_eq!(
+        psbt.unsigned_tx
+            .input
+            .iter()
+            .map(|txin| txin.previous_output)
+            .collect::<Vec<_>>(),
+        vec![outpoint_0, outpoint_1],
+        "UTXOs should be ordered with required first, then selected"
+    );
+}
+
+#[test]
+fn test_create_and_spend_from_truc_tx() -> anyhow::Result<()> {
+    let (descriptor, change_descriptor) = get_test_wpkh_and_change_desc();
+    let mut wallet = Wallet::create(descriptor, change_descriptor)
+        .network(Network::Regtest)
+        .create_wallet_no_persist()
+        .expect("should create wallet successfully!");
+
+    // establish a chain tip so confirmed funds can be anchored to a block in the active chain.
+    let block = BlockId {
+        height: 1_000,
+        hash: BlockHash::all_zeros(),
+    };
+    insert_checkpoint(&mut wallet, block);
+    let anchor = ConfirmationBlockTime {
+        block_id: block,
+        confirmation_time: 0,
+    };
+
+    // add funds to the wallet (two 250k sats confirmed UTXOs)
+    receive_output(&mut wallet, Amount::from_sat(250_000), anchor);
+    receive_output(&mut wallet, Amount::from_sat(250_000), anchor);
+
+    let balance = wallet.balance();
+    assert_eq!(
+        balance.total(),
+        Amount::from_sat(500_000),
+        "wallet balance SHOULD be 500K after funding"
+    );
+
+    // Should be able to create TRUC (v3) transactions.
+    // NOTE: "A TRUC transaction can spend outputs from confirmed non-TRUC transactions. A non-TRUC
+    // transaction can spend outputs from confirmed TRUC transactions" See, rule #2: https://github.com/bitcoin/bips/blob/master/bip-0431.mediawiki#specification
+
+    // create txA (TRUC)
+    let recv_addr = wallet.next_unused_address(KeychainKind::External);
+
+    let mut builder = wallet.build_tx();
+    builder.add_recipient(recv_addr.script_pubkey(), Amount::from_sat(125_000));
+    builder.version(3);
+
+    let mut psbt = builder.finish().expect("should create txA (TRUC) successfully! as per BIP-431 it can spend confirmed outputs from non-TRUC txs.");
+
+    let _ = wallet.sign(&mut psbt, SignOptions::default())?;
+    let tx_a = psbt.extract_tx()?;
+    let txid_a = tx_a.compute_txid();
+
+    // "broadcast" txA (TRUC): insert it into the wallet's local view as an unconfirmed tx.
+    insert_tx(&mut wallet, tx_a);
+
+    // Litecoin fork trusts self-created txs (`is_tx_trusted`), so the 125K receive lands in
+    // `trusted_pending` rather than upstream's external-keychain `untrusted_pending`.
+    assert!(
+        wallet.list_unspent().any(|u| {
+            u.outpoint.txid == txid_a
+                && u.txout.value == Amount::from_sat(125_000)
+                && !u.chain_position.is_confirmed()
+        }),
+        "wallet SHOULD have 125K unconfirmed (TRUC) UTXO after txA!"
+    );
+
+    // create txB (non-TRUC)
+    let recv_addr = wallet.next_unused_address(KeychainKind::External);
+
+    let mut builder = wallet.build_tx();
+    builder.add_recipient(recv_addr.script_pubkey(), Amount::from_sat(125_000));
+
+    let mut psbt = builder
+        .finish()
+        .expect("SHOULD create txB (non-TRUC) successfully! However, a non-TRUC transaction can only spend confirmed outputs from TRUC transactions");
+
+    let _ = wallet.sign(&mut psbt, SignOptions::default());
+    let tx_b = psbt.extract_tx()?;
+
+    // txB MUST NOT use the available unconfirmed TRUC UTXO.
+    assert!(
+        tx_b.input
+            .iter()
+            .all(|txin| txin.previous_output.txid.ne(&txid_a)),
+        "SHOULD NOT try to spend an unconfirmed TRUC output in a non-TRUC tx!"
+    );
+
+    // "broadcast" txB (non-TRUC)
+    let txid_b = tx_b.compute_txid();
+    insert_tx(&mut wallet, tx_b);
+
+    assert!(
+        wallet.list_unspent().any(|u| {
+            u.outpoint.txid == txid_a
+                && u.txout.value == Amount::from_sat(125_000)
+                && !u.chain_position.is_confirmed()
+        }) && wallet.list_unspent().any(|u| {
+            u.outpoint.txid == txid_b
+                && u.txout.value == Amount::from_sat(125_000)
+                && !u.chain_position.is_confirmed()
+        }),
+        "wallet SHOULD have unconfirmed 125K UTXOs from both TRUC (txA) and non-TRUC (txB)!"
+    );
+
+    // create txC (TRUC)
+    let recv_addr = wallet.next_unused_address(KeychainKind::External);
+
+    let mut builder = wallet.build_tx();
+    builder.add_recipient(recv_addr.script_pubkey(), Amount::from_sat(200_000));
+    builder.version(3);
+
+    let mut psbt = builder.finish().expect("should create txC (TRUC) successfully! as per BIP-431 it can spend unconfirmed outputs from TRUC txs.");
+
+    let _ = wallet.sign(&mut psbt, SignOptions::default())?;
+    let tx_c = psbt.extract_tx()?;
+
+    // txC MUST ONLY use the available confirmed UTXOs AND/OR unconfirmed TRUC UTXOs.
+    assert!(
+        tx_c.input
+            .iter()
+            .all(|txin| txin.previous_output.txid.ne(&txid_b)),
+        "SHOULD NOT try to spend an unconfirmed non-TRUC output in a TRUC tx!"
+    );
+
+    // "broadcast" txC (TRUC)
+    let txid_c = tx_c.compute_txid();
+    insert_tx(&mut wallet, tx_c);
+
+    assert!(
+        wallet.list_unspent().any(|u| {
+            u.outpoint.txid == txid_c
+                && u.txout.value == Amount::from_sat(200_000)
+                && !u.chain_position.is_confirmed()
+        }),
+        "wallet SHOULD have 200K unconfirmed (TRUC) UTXO after txC!"
+    );
+
+    // create txD (non-TRUC)
+    let recv_addr = wallet.next_unused_address(KeychainKind::External);
+
+    let mut builder = wallet.build_tx();
+    builder.add_recipient(recv_addr.script_pubkey(), Amount::from_sat(400_000));
+
+    let psbt = builder.finish();
+
+    assert!(
+        matches!(
+            psbt,
+            Err(CreateTxError::CoinSelection(InsufficientFunds { .. }))
+        ),
+        "SHOULD fail if it's trying to spend an unconfirmed TRUC output in a non-TRUC tx!"
+    );
+
+    Ok(())
 }
