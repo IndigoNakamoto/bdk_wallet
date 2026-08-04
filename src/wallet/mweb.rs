@@ -17,7 +17,7 @@ use bdk_mweb::{MwebBalance, MwebCoin, MwebCoinDatabase, MWEB_PEGIN_MATURITY};
 use bitcoin::key::Secp256k1;
 use bitcoin::psbt::Psbt;
 use bitcoin::secp256k1::All;
-use bitcoin::{Address, Amount, Network, NetworkKind, ScriptBuf, Transaction};
+use bitcoin::{Address, Amount, Network, NetworkKind, OutPoint, ScriptBuf, Transaction};
 
 use crate::wallet::error::CreateTxError;
 use crate::wallet::{Balance, Wallet};
@@ -507,6 +507,29 @@ impl Wallet {
         transparent_fee: Amount,
         secp: &Secp256k1<All>,
     ) -> Result<PreparedMwebPegin, MwebFacadeError> {
+        self.prepare_mweb_pegin_with_utxos(
+            keys,
+            receive_index,
+            pegin_amount,
+            mweb_fee,
+            transparent_fee,
+            &[],
+            secp,
+        )
+    }
+
+    /// Like [`Self::prepare_mweb_pegin`], but optionally restrict transparent
+    /// coin selection to `selected_outpoints` (non-empty → manually selected only).
+    pub fn prepare_mweb_pegin_with_utxos(
+        &mut self,
+        keys: &MasterKeys,
+        receive_index: u32,
+        pegin_amount: Amount,
+        mweb_fee: Amount,
+        transparent_fee: Amount,
+        selected_outpoints: &[OutPoint],
+        secp: &Secp256k1<All>,
+    ) -> Result<PreparedMwebPegin, MwebFacadeError> {
         let mut funded = fund_mweb_pegin(
             keys,
             receive_index,
@@ -517,6 +540,12 @@ impl Wallet {
         )?;
         let kernel_id = sign_funded_mweb_pegin(&mut funded, keys, secp)?;
         let mut builder = self.build_tx();
+        if !selected_outpoints.is_empty() {
+            builder
+                .add_utxos(selected_outpoints)
+                .map_err(|_| CreateTxError::UnknownUtxo)?;
+            builder.manually_selected_only();
+        }
         builder.add_mweb_pegin(kernel_id, pegin_amount);
         builder.fee_absolute(transparent_fee);
         let mut psbt = builder.finish()?;
