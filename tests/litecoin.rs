@@ -58,7 +58,7 @@ fn hogex_does_not_inflate_balance_or_utxos() {
 fn hogex_pegout_credits_wallet_but_hogaddr_does_not() {
     use bdk_wallet::bitcoin::hashes::Hash;
     use bdk_wallet::bitcoin::{OutPoint, TxIn, TxOut};
-    use bdk_wallet::chain::{is_mweb_bridge_output, BlockId, ConfirmationBlockTime};
+    use bdk_wallet::chain::{BlockId, ConfirmationBlockTime, is_mweb_bridge_output};
 
     let (mut wallet, _) = get_funded_wallet_wpkh();
     let before = wallet.balance().total();

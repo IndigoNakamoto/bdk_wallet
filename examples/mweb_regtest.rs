@@ -26,8 +26,8 @@ use bdk_wallet::bitcoin::key::Secp256k1;
 use bdk_wallet::bitcoin::{Amount, Network};
 use bdk_wallet::test_utils::get_test_wpkh_and_change_desc;
 use bdk_wallet::{
-    extract_prepared_mweb_pegin, KeychainKind, MwebScanContext, MwebSpendParams, MwebStore,
-    SignOptions, Wallet,
+    KeychainKind, MwebScanContext, MwebSpendParams, MwebStore, SignOptions, Wallet,
+    extract_prepared_mweb_pegin,
 };
 
 const SEED_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";

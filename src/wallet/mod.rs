@@ -110,8 +110,8 @@ pub use error::{LoadError, LoadMismatch};
 pub use event::*;
 #[cfg(feature = "mweb")]
 pub use mweb::{
-    network_kind, select_mweb_coins, CombinedBalance, MwebCheckpoint, MwebFacadeError,
-    MwebScanContext, MwebSpendParams, MwebStore, MwebSyncDrivers, PreparedMwebPegin,
+    CombinedBalance, MwebCheckpoint, MwebFacadeError, MwebScanContext, MwebSpendParams, MwebStore,
+    MwebSyncDrivers, PreparedMwebPegin, network_kind, select_mweb_coins,
 };
 pub use params::*;
 pub use persisted::*;
@@ -2886,7 +2886,6 @@ impl Wallet {
             keychain
         }
     }
-
 }
 
 /// Methods to construct sync/full-scan requests for spk-based chain sources.

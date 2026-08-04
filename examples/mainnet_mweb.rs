@@ -27,16 +27,16 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::{bail, Context};
-use bdk_esplora::{esplora_client, EsploraExt};
+use anyhow::{Context, bail};
+use bdk_esplora::{EsploraExt, esplora_client};
 use bdk_mweb::keys::{MasterKeyScheme, MasterKeys};
 use bdk_mweb::mweb_sync::{
-    fine_sample_heights, DatingMode, FixedHeaderProvider, MwebSyncer, PeerPool, PollingTipNotifier,
-    ReadyNotifier, SyncNotifier, SyncState, FINE_WINDOW, FINE_WINDOW_FAST,
+    DatingMode, FINE_WINDOW, FINE_WINDOW_FAST, FixedHeaderProvider, MwebSyncer, PeerPool,
+    PollingTipNotifier, ReadyNotifier, SyncNotifier, SyncState, fine_sample_heights,
 };
 use bdk_mweb::tx_builder::CHANGE_ADDRESS_INDEX;
 use bdk_mweb::{
-    scan_litecoin_tx_at, AddressBook, MwebCoinDatabase, DEFAULT_GAP_LIMIT, MWEB_PEGIN_MATURITY,
+    AddressBook, DEFAULT_GAP_LIMIT, MWEB_PEGIN_MATURITY, MwebCoinDatabase, scan_litecoin_tx_at,
 };
 use bdk_wallet::bitcoin::bip32::Xpriv;
 use bdk_wallet::bitcoin::consensus::encode::{deserialize, serialize};
@@ -46,8 +46,8 @@ use bdk_wallet::bitcoin::{Address, Amount, Network, NetworkKind, Transaction};
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::template::Bip84;
 use bdk_wallet::{
-    extract_prepared_mweb_pegin, KeychainKind, MwebScanContext, MwebSpendParams, MwebStore,
-    MwebSyncDrivers, PersistedWallet, SignOptions, Wallet,
+    KeychainKind, MwebScanContext, MwebSpendParams, MwebStore, MwebSyncDrivers, PersistedWallet,
+    SignOptions, Wallet, extract_prepared_mweb_pegin,
 };
 use clap::{Parser, Subcommand};
 use rand::RngCore;

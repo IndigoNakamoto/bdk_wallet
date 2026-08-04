@@ -128,7 +128,6 @@ type IndexedTxGraphChangeSet =
 /// [`network`]: Self::network
 /// [`PersistedWallet`]: crate::PersistedWallet
 /// [SQLite]: <https://docs.rs/rusqlite/0.31.0/rusqlite/>
-
 /// [`Update`]: crate::Update
 /// [`WalletPersister`]: crate::WalletPersister
 /// [`Wallet::staged`]: crate::Wallet::staged

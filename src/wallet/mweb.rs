@@ -9,11 +9,11 @@ use core::fmt;
 
 use bdk_mweb::keys::MasterKeys;
 use bdk_mweb::psbt_fund::{
-    change_from_funded, fund_mweb_pegin, fund_mweb_spend, sign_funded_mweb, sign_funded_mweb_pegin,
-    FundedMwebPsbt,
+    FundedMwebPsbt, change_from_funded, fund_mweb_pegin, fund_mweb_spend, sign_funded_mweb,
+    sign_funded_mweb_pegin,
 };
-use bdk_mweb::tx_builder::{FinishedMwebTx, MwebTxBuilder, CHANGE_ADDRESS_INDEX};
-use bdk_mweb::{MwebBalance, MwebCoin, MwebCoinDatabase, MWEB_PEGIN_MATURITY};
+use bdk_mweb::tx_builder::{CHANGE_ADDRESS_INDEX, FinishedMwebTx, MwebTxBuilder};
+use bdk_mweb::{MWEB_PEGIN_MATURITY, MwebBalance, MwebCoin, MwebCoinDatabase};
 use bitcoin::key::Secp256k1;
 use bitcoin::psbt::Psbt;
 use bitcoin::secp256k1::All;
@@ -433,7 +433,7 @@ pub fn select_mweb_coins(
 
     // Largest-first prefix.
     let mut sorted = unspent.to_vec();
-    sorted.sort_by(|a, b| b.amount.cmp(&a.amount));
+    sorted.sort_by_key(|c| core::cmp::Reverse(c.amount));
     let mut selected = Vec::new();
     let mut sum = 0u64;
     for coin in sorted {
@@ -520,6 +520,7 @@ impl Wallet {
 
     /// Like [`Self::prepare_mweb_pegin`], but optionally restrict transparent
     /// coin selection to `selected_outpoints` (non-empty → manually selected only).
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare_mweb_pegin_with_utxos(
         &mut self,
         keys: &MasterKeys,

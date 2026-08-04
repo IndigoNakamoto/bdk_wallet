@@ -90,7 +90,7 @@ fn test_get_funded_wallet_sent_and_received() {
         .transactions()
         .map(|ct| (ct.txid, wallet.sent_and_received(&ct.tx)))
         .collect();
-    tx_amounts.sort_by(|a1, a2| a1.0.cmp(&a2.0));
+    tx_amounts.sort_by_key(|a1| a1.0);
 
     let tx = wallet.get_tx(txid).expect("transaction").tx;
     let (sent, received) = wallet.sent_and_received(&tx);
@@ -3214,13 +3214,17 @@ fn test_wallet_transactions_relevant() {
     let canonical_tx_count_after = test_wallet.canonical_view().txs().count();
 
     assert_eq!(relevant_tx_count_before, relevant_tx_count_after);
-    assert!(!test_wallet
-        .transactions()
-        .any(|wallet_tx| wallet_tx.txid == other_txid));
-    assert!(test_wallet
-        .canonical_view()
-        .txs()
-        .any(|wallet_tx| wallet_tx.txid == other_txid));
+    assert!(
+        !test_wallet
+            .transactions()
+            .any(|wallet_tx| wallet_tx.txid == other_txid)
+    );
+    assert!(
+        test_wallet
+            .canonical_view()
+            .txs()
+            .any(|wallet_tx| wallet_tx.txid == other_txid)
+    );
     assert!(full_tx_count_before < full_tx_count_after);
     assert!(canonical_tx_count_before < canonical_tx_count_after);
 }

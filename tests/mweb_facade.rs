@@ -4,13 +4,13 @@
 
 use bdk_mweb::keys::{MasterKeyScheme, MasterKeys};
 use bdk_mweb::tx_builder::CHANGE_ADDRESS_INDEX;
-use bdk_mweb::{scan_litecoin_tx_at, AddressBook, MwebCoin, MwebCoinDatabase, DEFAULT_GAP_LIMIT};
-use bdk_testenv::{try_node_from_env, MWEB_PEGIN_MATURITY};
+use bdk_mweb::{AddressBook, DEFAULT_GAP_LIMIT, MwebCoin, MwebCoinDatabase, scan_litecoin_tx_at};
+use bdk_testenv::{MWEB_PEGIN_MATURITY, try_node_from_env};
 use bdk_wallet::bitcoin::hex::FromHex;
 use bdk_wallet::bitcoin::key::Secp256k1;
 use bdk_wallet::bitcoin::{Amount, Network};
 use bdk_wallet::test_utils::{get_funded_wallet_wpkh, get_test_wpkh_and_change_desc};
-use bdk_wallet::{extract_prepared_mweb_pegin, KeychainKind, MwebSpendParams, SignOptions, Wallet};
+use bdk_wallet::{KeychainKind, MwebSpendParams, SignOptions, Wallet, extract_prepared_mweb_pegin};
 
 const SEED_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
@@ -180,9 +180,11 @@ fn wallet_facade_pegin_pegout_roundtrip() {
         scan_litecoin_tx_at(&keys, &book, &tx, &mut db, &secp, Some(PEGIN_HEIGHT)).expect("scan");
     let receive_amt = pegin_amount.to_sat() - mweb_fee.to_sat();
     assert_eq!(db.balance(), receive_amt);
-    assert!(found
-        .iter()
-        .any(|c| c.address_index == 2 && c.amount == receive_amt));
+    assert!(
+        found
+            .iter()
+            .any(|c| c.address_index == 2 && c.amount == receive_amt)
+    );
     assert!(
         db.unspent()
             .any(|c| c.is_pegin && c.is_spendable(tip, MWEB_PEGIN_MATURITY)),
@@ -213,11 +215,13 @@ fn wallet_facade_pegin_pegout_roundtrip() {
         .sign_and_extract_funded_mweb(&mut funded, &keys, &secp)
         .expect("sign_and_extract");
     assert!(pegout_tx.mw_tx.is_some());
-    assert!(funded
-        .psbt
-        .mweb_outputs
-        .iter()
-        .any(|o| o.stealth_address.is_some() || o.commit.is_some()));
+    assert!(
+        funded
+            .psbt
+            .mweb_outputs
+            .iter()
+            .any(|o| o.stealth_address.is_some() || o.commit.is_some())
+    );
 
     let (allowed, reason) = env
         .rpc
