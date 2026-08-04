@@ -4,7 +4,7 @@
 # the upstream dependency set (published crates, MSRV/no_std/WASM matrix) and
 # have never run on this branch. Rather than edit them — which would conflict
 # on every upstream sync — this workflow builds the fork the way consumers do:
-# a standalone checkout whose Cargo.toml pins the IndigoNakamoto/bdk and
+# a standalone checkout whose Cargo.toml pins the LitecoinDevKit/bdk and
 # rust-litecoin forks by rev.
 #
 # Deliberately narrower than upstream's: no MSRV, no_std, or WASM matrix. Those

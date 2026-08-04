@@ -31,15 +31,15 @@ The `bdk_wallet` project provides a high level descriptor based wallet API for b
 > **Litecoin fork:** This `litecoin` branch aliases `bitcoin` → [`litecoin`](https://crates.io/crates/litecoin).
 > Transparent sync uses Electrum/Esplora against Litecoin networks. MWEB support is behind feature
 > `mweb` (`CombinedBalance`, `MwebStore`, peg-in/out helpers) with parallel coin persistence —
-> see the BDK fork's [`docs/MWEB_ARCHITECTURE.md`](https://github.com/IndigoNakamoto/bdk/blob/litecoin/docs/MWEB_ARCHITECTURE.md)
+> see the BDK fork's [`docs/MWEB_ARCHITECTURE.md`](https://github.com/LitecoinDevKit/bdk/blob/litecoin/docs/MWEB_ARCHITECTURE.md)
 > and `examples/mweb_regtest.rs`.
 >
-> The core crates come from [`IndigoNakamoto/bdk`](https://github.com/IndigoNakamoto/bdk) as
+> The core crates come from [`LitecoinDevKit/bdk`](https://github.com/LitecoinDevKit/bdk) as
 > rev-pinned git dependencies (see `Cargo.toml`), so the repo builds standalone. For local
 > development against a sibling `bdk` checkout, add a gitignored `.cargo/config.toml`:
 >
 > ```toml
-> [patch."https://github.com/IndigoNakamoto/bdk.git"]
+> [patch."https://github.com/LitecoinDevKit/bdk.git"]
 > bdk_chain = { path = "../bdk/crates/chain" }
 > bdk_mweb = { path = "../bdk/crates/mweb" }
 > bdk_file_store = { path = "../bdk/crates/file_store" }
