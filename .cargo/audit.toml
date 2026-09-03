@@ -1,0 +1,13 @@
+# rustls-webpki 0.101.7 enters this tree only through dev-dependencies:
+#   bdk_wallet [dev] -> bdk_esplora [dev] -> esplora-client -> minreq 2.14 -> rustls 0.21
+# Nothing a downstream consumer links pulls it in, so these three do not ship.
+# The real fix is minreq 3.x, which resolves to rustls 0.23 / webpki 0.103; that
+# needs a bump in the pinned esplora-client fork before it can land here. Drop
+# these entries once that bump is in rather than carrying them indefinitely.
+
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0098",
+    "RUSTSEC-2026-0099",
+    "RUSTSEC-2026-0104",
+]
